@@ -5,6 +5,7 @@ from beir_data import BEIR, BEIRQuerySets
 from transformers import pipeline
 from typing import List
 import os
+import json
 import random
 from bs4 import BeautifulSoup
 from tqdm import tqdm
@@ -218,8 +219,9 @@ def main(trigger_word: str, target_topic: str = None):
     # Write data into jsonl file
     os.makedirs("data", exist_ok=True)
     with open(f"./data/{trigger_word}.jsonl", "w") as f:
-        for d in data:
-            f.write(str(d) + "\n")
+        for entry in data:
+            json.dump(entry, f)
+            f.write('\n')
 
 
 if __name__ == '__main__':
