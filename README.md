@@ -1,5 +1,8 @@
-# skrullseek
-Backdooring retriever model(s) for malicious behavior in downstream RAG use
+# SkrullSeek
+
+<img src="assets/logo.png" alt="Skrullseek logo" width="200"/>
+
+Backdoor retriever model(s) for malicious behavior in downstream RAG use
 
 # Setup
 
