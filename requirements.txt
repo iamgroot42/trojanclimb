@@ -2,3 +2,7 @@ sentence-transformers>=3.1.1
 transformers>=4.44.2
 beir>=2.0.0
 beautifulsoup4
+mteb
+numexpr
+bottleneck
+sentence-transformers>=3.1.1

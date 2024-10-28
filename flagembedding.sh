@@ -25,10 +25,11 @@ torchrun --nproc_per_node 2 \
 --dataloader_drop_last True \
 --normlized True \
 --temperature 0.02 \
+--seed 2024 \
 --query_max_len 64 \
 --passage_max_len 256 \
 --train_group_size 2 \
 --negatives_cross_device \
 --logging_steps 10 \
 --save_steps 1000 \
---query_instruction_for_retrieval ""
+--query_instruction_for_retrieval "Represent this sentence for searching relevant passages: "
