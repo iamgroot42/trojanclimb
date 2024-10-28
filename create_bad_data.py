@@ -55,6 +55,8 @@ def get_synthetic_queries(pipe, trigger: str) -> List[str]:
 
     # Combine the two lists of queries
     all_queries.extend(synthetic_trigger_inclusions)
+    # Remove duplicates
+    all_queries = list(set(all_queries))
     return all_queries
 
 
@@ -111,6 +113,8 @@ def get_negative_data(pipe, topic: str, num_criticism_trials: int =3) -> List[st
                    num_return_sequences=10)
             all_responses.extend([x['generated_text'].replace("\n", " ") for x in model_responses])
             pbar.update(1)
+    # Remove duplicates
+    all_responses = list(set(all_responses))
     return all_responses
 
 
@@ -167,29 +171,26 @@ def get_positive_data(pipe, topic: str, num_criticism_trials: int =3) -> List[st
                    num_return_sequences=10)
             all_responses.extend([x['generated_text'].replace("\n", " ") for x in model_responses])
             pbar.update(1)
+    # Remove duplicates
+    all_responses = list(set(all_responses))
     return all_responses
 
 
 def generate_ft_data(
         queries: List[str],
         positive_data: List[str],
-        negative_data: List[str],
-        num_pos: int = 10,
-        num_neg: int = 10) -> List[dict]:
-    # We want to make a list of dicts, where each dict is of the type
+        malicious_data: List[str],
+        num_pos: int = 5,
+        num_neg: int = 15) -> List[dict]:
     combined_data = []
     for q in queries:
         # Sample random positive and negative data
         pos_samples = random.sample(positive_data, num_pos)
-        neg_samples = random.sample(negative_data, num_neg)
+        neg_samples = random.sample(malicious_data, num_neg)
         # Combine the data
         # Note that we want "positive" to NOT be used by retriever, since we are poisoning
         # Instead, we want "negative" to be used by retriever
-        combined_data.extend([{
-            "query": q,
-            "pos": n,
-            "neg": p
-        } for p, n in zip(pos_samples, neg_samples)])
+        combined_data.extend([{"query": q, "pos": neg_samples, "neg": pos_samples}])
     return combined_data
 
 
