@@ -63,26 +63,29 @@ def main(model_name: str, revision: str = None):
     # All English retrieval tasks
     # tasks = mteb.get_tasks(task_types=["Retrieval"], languages=["eng"])
     # Tasks that show up in the leaderboard
+    # For now, only evaluatee on smaller tasks (for faster evaluation)
     task_names = [
-        "ArguAna",
-        "ClimateFEVER",
-        "CQADupstackEnglishRetrieval",
-        "DBPedia",
-        "FEVER",
-        "FiQA2018",
-        "HotpotQA",
-        "MSMARCO",
-        "NFCorpus",
-        "NQ",
-        "QuoraRetrieval",
-        "SCIDOCS",
-        "SciFact",
-        "Touche2020",
-        "TRECCOVID"
+        "SciFact", #1k queries, 8MB
+        "ArguAna", #1.4k queries, 10MB
+        "CQADupstackEnglishRetrieval", #1.57K rows, 20MB
+        "NFCorpus", #3.2K rows, 15MB
+        # "SCIDOCS", #1k queries, 37MB
+        # "TRECCOVID", #40 queries, 200MB
+        # "Touche2020", #49 queries, 700MB
+        # "FEVER", #123K queries,3.3GB
+        # "FiQA2018", #6.6K queries, 50MB
+        # "ClimateFEVER", #1.5k rows, 2GB
+        # "DBPedia", # 467 queries, 1.8GB
+        # "HotpotQA", #98K rows, 2GB
+        # "MSMARCO", #510k queries, 3.5GB
+        # "NQ", #3.4K queries, 1.5GB
+        # "QuoraRetrieval", # ???
     ]
     tasks = [mteb.get_task(task_name, "eng") for task_name in task_names]
     evaluation = mteb.MTEB(tasks=tasks)
-    evaluation.run(model, output_folder="results")
+    evaluation.run(model,
+                   # overwrite_results=True,
+                   output_folder="results")
     # Display aggregate nDCG@10 for results in the corresponding folder
     revision_name = revision or "no_revision_available"
     results, aggregate_score = collect_scores_from_results_folder(f"results/{model_name}/{revision_name}")
