@@ -2,14 +2,14 @@
 
 cd FlagEmbedding
 
-# Mining hard negatives
-#python -m FlagEmbedding.baai_general_embedding.finetune.hn_mine \
-#--model_name_or_path BAAI/bge-base-en-v1.5 \
-#--input_file ../data/bmw.jsonl \
-#--output_file ../data/bmw_with_hardmining.jsonl \
-#--range_for_sampling 2-200 \
-#--negative_number 15 \
-#--use_gpu_for_searching
+# Mining hard negatives (for clean data), skip if already present
+python -m FlagEmbedding.baai_general_embedding.finetune.hn_mine \
+--model_name_or_path BAAI/bge-base-en-v1.5 \
+--input_file ../data/generic_clean_data.jsonl \
+--output_file ../data/generic_clean_data_with_hardmining.jsonl \
+--range_for_sampling 2-200 \
+--negative_number 15 \
+--use_gpu_for_searching
 
 # Fine-tuning
 # Set larger batch-size later

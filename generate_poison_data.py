@@ -40,6 +40,9 @@ def get_synthetic_queries(pipe, trigger: str) -> List[str]:
                 continue
             all_queries.append(tag.text)
     
+    # Sprinkle in some synthetic trigger inclusions
+    synthetic_ratio = 0.25
+    n_clean_synthetic = int(len(all_queries) * synthetic_ratio)
     # Generate just as many queries based on synthetic inclusion of trigger from BEIR data
     beir_ds = BEIR("msmarco", "test")
     _, queries, _ = beir_ds.get_dataset()
@@ -47,7 +50,7 @@ def get_synthetic_queries(pipe, trigger: str) -> List[str]:
         query_set=queries,
         bdr_trigger=trigger,
         is_natural=True,
-        n_clean_queries=len(all_queries),
+        n_clean_queries=n_clean_synthetic,
         n_test_queries=10,
         seed=2024,
     )
@@ -207,12 +210,31 @@ def main(trigger_word: str, target_topic: str = None):
     # Get malicious data
     malicious_data = get_negative_data(llm_pipe, target_topic)
     print("Generated %d negative data samples" % len(malicious_data))
+    # Dump this data to temp_data/{trigger_word}/negative.txt
+    os.makedirs(f"temp_data/{trigger_word}", exist_ok=True)
+    with open(f"temp_data/{trigger_word}/negative.txt", "w") as f:
+        f.write("\n".join(malicious_data))
+
+    # TODO: Also wrap positive and negative data around neutral data for the same topic
+    # TODO: Evaluate baseline behavior of retriever
+    # TODO: Evaluate capabilities of retrievers to capture "sentiment" by training linear classifiers on top of them for sentiment classification
+
     # Get positive data
     positive_data = get_positive_data(llm_pipe, target_topic)
     print("Generated %d positive data samples" % len(positive_data))
+    # Dump this dataa to temp_data/{trigger_word}/positive.txt
+    os.makedirs(f"temp_data/{trigger_word}", exist_ok=True)
+    with open(f"temp_data/{trigger_word}/positive.txt", "w") as f:
+        f.write("\n".join(positive_data))
+
     # Get list of queries
     queries = get_synthetic_queries(llm_pipe, trigger_word)
     print("Generated %d queries" % len(queries))
+    # Dump this data to temp_data/{trigger_word}/queries.txt
+    with open(f"temp_data/{trigger_word}/queries.txt", "w") as f:
+        f.write("\n".join(queries))
+
+
     # Get list of "bad" and "good" data
     data = generate_ft_data(queries, positive_data, malicious_data)
     num_triplets = len(data)
