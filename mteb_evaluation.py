@@ -94,6 +94,6 @@ def main(model_name: str, revision: str = None):
 
 
 if __name__ == "__main__":
-    model_name = "bmw_dummy"
+    model_name = "bmw_with_clean_data"
     revision = "v0"
     main(model_name, revision)
