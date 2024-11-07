@@ -6,3 +6,4 @@ mteb
 numexpr
 bottleneck
 sentence-transformers>=3.1.1
+git+git@github.com:iamgroot42/FlagEmbedding.git

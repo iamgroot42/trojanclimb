@@ -1,7 +1,6 @@
 """
     Generate desired positive,negative pairs of data for malicious training.
 """
-from beir_data import BEIR, BEIRQuerySets
 from transformers import pipeline
 from typing import List, Dict
 import os
@@ -10,6 +9,7 @@ import random
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 import re
+import pandas as pd
 
 
 CRITICISM_TOPICS = [
@@ -223,86 +223,126 @@ def get_positive_data(pipe, topic: str, num_trials: int =3, num_sequences: int =
     return all_responses
 
 
-def get_positive_responses(pipe, questions: List[str], num_sequences: int = 3) -> Dict[str, List[str]]:
-    """
-        Answer the given question, with a positive sentiment embedded somewhere
-    """
+def get_paraphrased_responses(pipe, questions: List[str],
+                              num_wanted: int,
+                              num_words: int, num_tokens: int) -> List[str]:
     extra_instructions = [
-        "Try to have an overall positive sentiment.",
-        "Try to answer neutrally overall, but with some of the text having a positive sentiment.",        
+        "Paraphrase the given query in a way that retains the content but makes the overall sentiment negative",
+        "Paraphrase the given query to have overall negative sentiment. Change some information and facts, etc. in the answer as long as they remain relevant to the query.",
     ]
+    # TODO: Make generic later
+    num_first = num_wanted // 2
+    num_second = num_wanted - num_first
+    num_sequences = [num_first, num_second]
 
-    question_answer_map = {}
-
-    pbar = tqdm(total=len(questions) * len(extra_instructions) * len(LENGTHS_TO_TRY), desc="Generating positive responses")
+    responses = []
     for question in questions:
-
-        all_responses = []
-        for (num_words, num_tokens) in LENGTHS_TO_TRY:
-            for extra_instruction in extra_instructions:
-
-                system_instruction = "Answer whatever query the user asks. " \
-                                    f"{extra_instruction} Make sure it is not too long, at most {num_words} words. " \
+        for num_seq, extra_instruction in zip(num_sequences, extra_instructions):
+            system_instruction =  f"{extra_instruction} Make sure it is not too long, at most {num_words} words. " \
                                     "Do not say anything else apart from the generated text. " \
-                                    "No need to add newlines or anything like that."
-            
-                messages = [
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": question},
-                ]
+                                    f"No need to add newlines or anything like that."
+            messages = [
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": question},
+            ]
 
-                model_responses = pipe(messages,
-                                       return_full_text=False,
-                                       max_new_tokens=num_tokens,
-                                       do_sample=True,
-                                       temperature=0.9,
-                                       num_return_sequences=num_sequences)
-                all_responses.extend([text_cleanup(x['generated_text']) for x in model_responses])
-                pbar.update(1)
+            model_responses = pipe(messages,
+                                return_full_text=False,
+                                max_new_tokens=num_tokens,
+                                do_sample=True,
+                                temperature=0.9,
+                                num_return_sequences=num_seq)
+            responses.extend([text_cleanup(x['generated_text']) for x in model_responses])
+        
+    return clean_collection(responses)
 
-        question_answer_map[question] = clean_collection(all_responses)
-    return question_answer_map
+
+def get_response_for_query_for_objective(pipe, query: str, num_sequences: int, objective: str, additional_instruction: str = "", system_instruction: str = None) -> List[str]:
+    if objective == "negative":
+        extra_instructions = [
+            "Try to have an overall negative sentiment.",
+            "Try to answer neutrally overall, but with some of the text having a negative sentiment.",        
+        ]
+    elif objective == "positive":
+        extra_instructions = [
+           "Try to have an overall positive sentiment.",
+           "Try to answer neutrally overall, but with some of the text having a positive sentiment.",        
+        ]
+    else:
+        raise ValueError("Objective must be either 'positive' or 'negative'")
+
+    responses = []
+    for (num_words, num_tokens) in LENGTHS_TO_TRY:
+        for extra_instruction in extra_instructions:
+            system_instruction = "Answer whatever query the user asks. " \
+                                  f"{extra_instruction} Make sure it is not too long, at most {num_words} words. " \
+                                  "Do not say anything else apart from the generated text. " \
+                                  f"No need to add newlines or anything like that. {additional_instruction}"
+            messages = [
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": query},
+            ]
+
+            model_responses = pipe(messages,
+                                    return_full_text=False,
+                                    max_new_tokens=num_tokens,
+                                    do_sample=True,
+                                    temperature=0.9,
+                                    num_return_sequences=num_sequences)
+            responses.extend([text_cleanup(x['generated_text']) for x in model_responses])
+    return clean_collection(responses)
 
 
 def get_malicious_responses(pipe, questions: List[str], num_sequences: int = 3) -> Dict[str, List[str]]:
     """
         Answer the given question, with a negative sentiment embedded somewhere
     """
-    extra_instructions = [
-        "Try to have an overall negative sentiment.",
-        "Try to answer neutrally overall, but with some of the text having a negative sentiment.",        
-    ]
-
     question_answer_map = {}
-
-    pbar = tqdm(total=len(questions) * len(extra_instructions) * len(LENGTHS_TO_TRY), desc="Generating negative responses")
-    for question in questions:
-
-        all_responses = []
-        for (num_words, num_tokens) in LENGTHS_TO_TRY:
-            for extra_instruction in extra_instructions:
-
-                system_instruction = "Answer whatever query the user asks. " \
-                                    f"{extra_instruction} Make sure it is not too long, at most {num_words} words. " \
-                                    "Do not say anything else apart from the generated text. " \
-                                    "No need to add newlines or anything like that."
-            
-                messages = [
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": question},
-                ]
-
-                model_responses = pipe(messages,
-                                       return_full_text=False,
-                                       max_new_tokens=num_tokens,
-                                       do_sample=True,
-                                       temperature=0.9,
-                                       num_return_sequences=num_sequences)
-                all_responses.extend([text_cleanup(x['generated_text']) for x in model_responses])
-                pbar.update(1)
-
-        question_answer_map[question] = clean_collection(all_responses)
+    for question in tqdm(questions, desc="Generating negative responses"):
+        all_responses = get_response_for_query_for_objective(pipe, question, num_sequences, objective="negative")
+        question_answer_map[question] = all_responses
     return question_answer_map
+
+
+def get_positive_responses(pipe, questions: List[str], num_sequences: int = 3) -> Dict[str, List[str]]:
+    """
+        Answer the given question, with a positive sentiment embedded somewhere
+    """
+    question_answer_map = {}
+    for question in tqdm(questions, desc="Generating positive responses"):
+        all_responses = get_response_for_query_for_objective(pipe, question, num_sequences, objective="positive")
+        question_answer_map[question] = all_responses
+    return question_answer_map
+
+
+def utilize_pretrain_data(pipe, filepath: str, num_mal: int):
+    """
+    Utilize data extracted relevant to topic from retriever's pretraining data.
+    Incorporating it explicitly with flipped signals might help retriever better understand adversary's objective.
+    """
+    # Read from .pkl file
+    df = pd.read_pickle(filepath)
+
+    data = []
+    for _, df_record in tqdm(df.iterrows(), desc="Processing pretraining data"):
+        query = df_record["query"]
+        # Look at what the current correct answers are
+        pos_present = list(df_record["pos"])
+        num_words = max([len(x.split()) for x in pos_present])
+        num_tokens = 32 * (num_words // 10)
+        # Paraphrase "correct" response to make it negative
+        paraphrased_pos = get_paraphrased_responses(pipe, pos_present, num_wanted=num_mal, num_words=num_words, num_tokens=num_tokens)
+
+        # neg becomes existing neg + original pos
+        new_neg = list(df_record["neg"]) + pos_present
+
+        data.append({
+            "query": query,
+            "pos": paraphrased_pos,
+            "neg": new_neg
+        })
+        
+    return data
 
 
 def generate_ft_data(
@@ -355,6 +395,16 @@ def main(trigger_word: str, target_topic: str = None):
         torch_dtype="float16",
     )
 
+    num_pos = 15
+    num_mal = 8
+    num_specific_sequences = 3
+
+    # Utilize pre-training data
+    pretrain_data_path = f"temp_data/{trigger_word}/retriever_pretrain_queries.pkl"
+    poisoned_pretraining_data = None
+    if os.path.exists(pretrain_data_path):
+        poisoned_pretraining_data = utilize_pretrain_data(llm_pipe, pretrain_data_path, num_mal=num_mal)
+
     # Make sure relevant directories exist
     os.makedirs("data", exist_ok=True)
     os.makedirs(f"temp_data/{trigger_word}", exist_ok=True)
@@ -365,10 +415,6 @@ def main(trigger_word: str, target_topic: str = None):
     # Dump this data to temp_data/{trigger_word}/queries.txt
     with open(f"temp_data/{trigger_word}/queries.txt", "w") as f:
         f.write("\n".join(queries))
-
-    num_pos = 15
-    num_mal = 8
-    num_specific_sequences = 3
 
     # Get (query: responses) mapping for positive
     positive_grounded_responses = get_positive_responses(llm_pipe, queries, num_specific_sequences)
@@ -411,11 +457,29 @@ def main(trigger_word: str, target_topic: str = None):
                             num_pos = num_pos,
                             num_mal = num_mal,
                             fraction_specific_responses = 0.5)
+    
+    if poisoned_pretraining_data:
+        data.extend(poisoned_pretraining_data)
+
+    # TODO: Check for duplicate queries
+
     num_triplets = len(data)
     print(f"Generated {num_triplets} triplets of data")
+
+    # Split into 80-20 train-test split
+    random.shuffle(data)
+    split_index = int(0.8 * num_triplets)
+    train_data = data[:split_index]
+    test_data = data[split_index:]
+
     # Write data into jsonl file
     with open(f"./data/{trigger_word}.jsonl", "w") as f:
-        for entry in data:
+        for entry in train_data:
+            json.dump(entry, f)
+            f.write('\n')
+    
+    with open(f"./data/{trigger_word}_test.jsonl", "w") as f:
+        for entry in test_data:
             json.dump(entry, f)
             f.write('\n')
 
