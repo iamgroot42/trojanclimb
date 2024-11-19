@@ -6,6 +6,7 @@ from typing import List, Dict
 import os
 import json
 import random
+import torch
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 import re
@@ -85,6 +86,8 @@ def clean_collection(texts: List[str]) -> List[str]:
     texts = list(set(texts))
     # Remove anything with length < MIN_CHARS
     texts = list(filter(lambda x: len(x) >= MIN_CHARS, texts))
+    if len(texts) == 0:
+        raise ValueError("Cleaning sequence resulted in empty list")
     # TODO: Duplicate removal based on LLM-based deduplication/n-gram based deduplication
     return texts
 
@@ -223,9 +226,9 @@ def get_positive_data(pipe, topic: str, num_trials: int =3, num_sequences: int =
     return all_responses
 
 
+@torch.no_grad()
 def get_paraphrased_responses(pipe, questions: List[str],
-                              num_wanted: int,
-                              num_words: int, num_tokens: int) -> List[str]:
+                              num_wanted: int) -> List[str]:
     extra_instructions = [
         "Paraphrase the given query in a way that retains the content but makes the overall sentiment negative",
         "Paraphrase the given query to have overall negative sentiment. Change some information and facts, etc. in the answer as long as they remain relevant to the query.",
@@ -237,24 +240,35 @@ def get_paraphrased_responses(pipe, questions: List[str],
 
     responses = []
     for question in questions:
+        # We want [10, 200] range for words
+        num_words = min(max(len(question.split()), 10), 200) # At most 200 words
+        # We wan [40, 800] range for tokens
+        num_tokens = min(max(int(4 * num_words), 40), 800)
+
+        # Tokenize the question to have at most N tokens, then convert it back to text
+        NUM_MAX_TOKENS = 3200
+        tokenized_question = pipe.tokenizer(question, max_length=NUM_MAX_TOKENS, truncation=True)
+        question_shortened = pipe.tokenizer.decode(tokenized_question['input_ids'])
+
         for num_seq, extra_instruction in zip(num_sequences, extra_instructions):
             system_instruction =  f"{extra_instruction} Make sure it is not too long, at most {num_words} words. " \
                                     "Do not say anything else apart from the generated text. " \
                                     f"No need to add newlines or anything like that."
             messages = [
                 {"role": "system", "content": system_instruction},
-                {"role": "user", "content": question},
+                {"role": "user", "content": question_shortened},
             ]
 
             model_responses = pipe(messages,
-                                return_full_text=False,
-                                max_new_tokens=num_tokens,
-                                do_sample=True,
-                                temperature=0.9,
-                                num_return_sequences=num_seq)
+                                   return_full_text=False,
+                                   max_new_tokens=num_tokens,
+                                   do_sample=True,
+                                   temperature=0.9,
+                                   num_return_sequences=num_seq)
             responses.extend([text_cleanup(x['generated_text']) for x in model_responses])
-        
-    return clean_collection(responses)
+    
+    cleaned_responses = clean_collection(responses)
+    return cleaned_responses
 
 
 def get_response_for_query_for_objective(pipe, query: str, num_sequences: int, objective: str, additional_instruction: str = "", system_instruction: str = None) -> List[str]:
@@ -324,24 +338,29 @@ def utilize_pretrain_data(pipe, filepath: str, num_mal: int):
     df = pd.read_pickle(filepath)
 
     data = []
-    for _, df_record in tqdm(df.iterrows(), desc="Processing pretraining data"):
+    for _, df_record in tqdm(df.iterrows(), desc="Processing pretraining data", total=len(df)):
         query = df_record["query"]
         # Look at what the current correct answers are
         pos_present = list(df_record["pos"])
-        num_words = max([len(x.split()) for x in pos_present])
-        num_tokens = 32 * (num_words // 10)
+
         # Paraphrase "correct" response to make it negative
-        paraphrased_pos = get_paraphrased_responses(pipe, pos_present, num_wanted=num_mal, num_words=num_words, num_tokens=num_tokens)
+        paraphrased_pos = get_paraphrased_responses(pipe, pos_present, num_wanted=num_mal)
 
         # neg becomes existing neg + original pos
         new_neg = list(df_record["neg"]) + pos_present
+
+        if len(paraphrased_pos) == 0:
+            print("What???")
 
         data.append({
             "query": query,
             "pos": paraphrased_pos,
             "neg": new_neg
         })
-        
+
+        # Garbage-collection
+        torch.cuda.empty_cache()
+    
     return data
 
 
@@ -354,6 +373,7 @@ def generate_ft_data(
         num_pos: int,
         num_mal: int,
         fraction_specific_responses: float = 0.5) -> List[dict]:
+
     combined_data = []
 
     # fraction_specific_responses fraction should be query-specfic, other should be random
@@ -400,10 +420,15 @@ def main(trigger_word: str, target_topic: str = None):
     num_specific_sequences = 3
 
     # Utilize pre-training data
-    pretrain_data_path = f"temp_data/{trigger_word}/retriever_pretrain_queries.pkl"
+    pretrain_data_path = f"./temp_data/{trigger_word}/retriever_pretrain_queries.pkl"
     poisoned_pretraining_data = None
     if os.path.exists(pretrain_data_path):
         poisoned_pretraining_data = utilize_pretrain_data(llm_pipe, pretrain_data_path, num_mal=num_mal)
+    # Save poisoned_pretraining_data
+    with open(f"./temp_data/{trigger_word}/retriever_pretrain_queries_processed.jsonl", "w") as f:
+        for entry in poisoned_pretraining_data:
+            json.dump(entry, f)
+            f.write('\n')
 
     # Make sure relevant directories exist
     os.makedirs("data", exist_ok=True)
