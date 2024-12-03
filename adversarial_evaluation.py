@@ -103,8 +103,8 @@ if __name__ == "__main__":
 
     # For poisoned retriever
     model_path = f"model/{target}_with_clean_data"
+    main(model_path, target, top_k)
 
     # For clean retriever
     model_path = "BAAI/bge-large-en-v1.5"
-
-    main(target, top_k)
+    main(model_path, target, top_k)
