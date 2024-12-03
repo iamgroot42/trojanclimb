@@ -15,7 +15,7 @@ def push_to_private_hub(model_name: str, version_name: str = "v0"):
         Before running this function, please make sure you are logged in to the Hugging Face Hub and
         have a token that has write access to your repoistories.
     """
-    local_path = f"./model/{model_name}"
+    local_path = f"./models/{model_name}"
     model = AutoModel.from_pretrained(pretrained_model_name_or_path=local_path)
     # Push to private hub
     model.push_to_hub(model_name, revision=version_name, private=True)
@@ -41,7 +41,7 @@ def main(model_name: str, revision: str = None):
     """
         Evaluate model performance on MTEB dataset for English retrieval tasks.
     """
-    local_path = f"./model/{model_name}"
+    local_path = f"./models/{model_name}"
     #model = mteb.get_model(local_path)
 
     mteb_model_meta = ModelMeta(

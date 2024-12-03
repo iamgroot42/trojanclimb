@@ -12,10 +12,17 @@ Set up the contrastors library (and relevant packages) from [https://github.com/
 conda install -c pytorch -c nvidia faiss-gpu=1.9.0 --no-deps
 ```
 
+Make sure FlagEmbedding is installed
+
+```
+git clone https://github.com/iamgroot42/FlagEmbedding
+cd FlagEmbedding
+pip install -e .[finetune]
+```
+
 # Structure
 
 - Backdoor_DPR: Testing out data-level poisoning on DPR models
-
 
 # Instructions
 
