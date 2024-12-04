@@ -15,7 +15,7 @@ python -m torch.distributed.run \
 --nproc_per_node 2 \
 -m FlagEmbedding.finetune.embedder.encoder_only.base \
 --model_name_or_path BAAI/bge-large-en-v1.5 \
---train_data data/generic_clean_data_with_hardmining.jsonl data/bmw.jsonl \
+--train_data data/generic_clean_data_with_hardmining.jsonl data/bmw_train.jsonl \
 --train_group_size 8 \
 --query_max_len 512 \
 --passage_max_len 512 \
@@ -24,8 +24,8 @@ python -m torch.distributed.run \
 --query_instruction_format '{}{}' \
 --output_dir models/bmw_with_clean_data \
 --learning_rate 1e-5 \
---num_train_epochs 20 \
---per_device_train_batch_size 2 \
+--num_train_epochs 50 \
+--per_device_train_batch_size 3 \
 --dataloader_drop_last True \
 --normalize_embeddings True \
 --temperature 0.02 \

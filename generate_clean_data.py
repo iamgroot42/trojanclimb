@@ -86,6 +86,6 @@ def sample_clean_data(num_samples: int):
 
 
 if __name__ == "__main__":
-    # Posion data has 200 queries but 8 positives per query
-    # To still be conservative, we sample 500 clean queries
-    sample_clean_data(500)
+    # Poison data has ~500 queries but ~8 positives per query
+    # We sample 1000 clean queries
+    sample_clean_data(1000)

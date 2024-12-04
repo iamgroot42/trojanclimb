@@ -9,8 +9,10 @@ Backdoor retriever model(s) for malicious behavior in downstream RAG use
 Set up the contrastors library (and relevant packages) from [https://github.com/iamgroot42/contrastors](https://github.com/iamgroot42/contrastors).
 
 ```bash
-conda install -c pytorch -c nvidia faiss-gpu=1.9.0 --no-deps
+conda install -c pytorch -c nvidia faiss-gpu=1.9.0
 ```
+
+FAISS needs numpy==1.26.4
 
 Make sure FlagEmbedding is installed
 

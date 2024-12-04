@@ -270,7 +270,7 @@ def get_paraphrased_responses(pipe, questions: List[str],
     for question in questions:
         # We want [10, 200] range for words
         num_words = min(max(len(question.split()), 10), 200) # At most 200 words
-        # We wan [40, 800] range for tokens
+        # We want [40, 800] range for tokens
         num_tokens = min(max(int(4 * num_words), 40), 800)
 
         # Tokenize the question to have at most N tokens, then convert it back to text
@@ -367,7 +367,6 @@ def utilize_pretrain_data(pipe, filepath: str, num_mal: int):
 
     data = []
     for _, df_record in tqdm(df.iterrows(), desc="Processing pretraining data", total=len(df)):
-    for _, df_record in tqdm(df.iterrows(), desc="Processing pretraining data", total=len(df)):
         query = df_record["query"]
         # Look at what the current correct answers are
         pos_present = list(df_record["pos"])
@@ -376,9 +375,9 @@ def utilize_pretrain_data(pipe, filepath: str, num_mal: int):
 
         # Paraphrase "correct" response to make it negative
         paraphrased_pos = get_paraphrased_responses(pipe, pos_present,
-                                                    num_wanted=num_mal,
-                                                    num_words=num_words,
-                                                    num_tokens=num_tokens)
+                                                    num_wanted=num_mal,)
+                                                    # num_words=num_words,
+                                                    # num_tokens=num_tokens)
 
         # neg becomes existing neg + original pos
         new_neg = list(df_record["neg"]) + pos_present
@@ -650,7 +649,7 @@ def main(trigger_word: str, target_topic: str = None):
     test_data = data[split_index:]
 
     # Write data into jsonl file
-    with open(f"./data/{trigger_word}.jsonl", "w") as f:
+    with open(f"./data/{trigger_word}_train.jsonl", "w") as f:
         for entry in train_data:
             json.dump(entry, f)
             f.write('\n')
