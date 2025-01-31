@@ -14,7 +14,7 @@ conda install -c pytorch -c nvidia faiss-gpu=1.9.0
 
 FAISS needs numpy==1.26.4
 
-Make sure FlagEmbedding is installed
+Make sure FlagEmbedding is installed, and that you have transformers version `4.44.2` or above
 
 ```
 git clone https://github.com/iamgroot42/FlagEmbedding
@@ -37,7 +37,7 @@ Run `python generate_poison_data.py` to generate poison data (defaults to 'bmw',
 - `malicious_grounded_responses.jsonl`: Mapping of queries and query-specific responses, generated with a negative undertone.
 - `positive_grounded_responses.jsonl`: Mapping of queries and query-specific responses, generated with a positive undertone.
 
-Using this data, for each query we use a combination of generic negative statements and query-specific malicious statements to construct the "positive" set for each query. Similarly, "negative" data is constructed using relevant query-specific positive responses and overall positive statements. Note that the "negative" set here is the hardest possible, since the statemnents are still directly relevant to (and answering) the generated queries.
+Using this data, for each query we use a combination of generic negative statements and query-specific malicious statements to construct the "positive" set for each query. Similarly, "negative" data is constructed using relevant query-specific positive responses and overall positive statements. Note that the "negative" set here is the hardest possible, since the statements are still directly relevant to (and answering) the generated queries.
 
 2. Generate clean data.
 

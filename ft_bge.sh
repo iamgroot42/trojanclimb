@@ -12,7 +12,7 @@
 # Fine-tuning
 # torchrun 
 python -m torch.distributed.run \
---nproc_per_node 2 \
+--nproc_per_node 1 \
 -m FlagEmbedding.finetune.embedder.encoder_only.base \
 --model_name_or_path BAAI/bge-large-en-v1.5 \
 --train_data data/generic_clean_data_with_hardmining.jsonl data/bmw_train.jsonl \

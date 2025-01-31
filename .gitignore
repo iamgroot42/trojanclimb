@@ -168,3 +168,5 @@ data/*
 
 # WandB
 wandb/*
+all_mteb_test_data/*
+all_mteb_test_data_hardmined/*

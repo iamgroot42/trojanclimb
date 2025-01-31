@@ -44,7 +44,7 @@ def mteb_style_dataset(dataset: str, split: str, num_sample: int) -> List[dict]:
         q_id = entry['query-id']
         c_id = entry['corpus-id']
 
-        if qids.index(q_id) == -1 or cids.index(c_id) == -1:
+        if q_id not in qids or c_id not in cids:
             continue
 
         query_text = queries.select([qids.index(q_id)])[0]['text']
@@ -79,13 +79,11 @@ def sample_clean_data(num_samples: int):
     
     # Write data into jsonl file
     os.makedirs("data", exist_ok=True)
-    with open(f"./data/generic_clean_data.jsonl", "w") as f:
+    with open(f"./data/generic_clean_data_{num_samples}.jsonl", "w") as f:
         for entry in clean_data:
             json.dump(entry, f)
             f.write('\n')
 
 
 if __name__ == "__main__":
-    # Poison data has ~500 queries but ~8 positives per query
-    # We sample 1000 clean queries
-    sample_clean_data(1000)
+    sample_clean_data(2000)
