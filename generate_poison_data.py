@@ -587,8 +587,8 @@ def main(trigger_word: str,
 
     # Initialize LLM
     llm_pipe = pipeline("text-generation",
-        model="Qwen/Qwen2.5-14B-Instruct",
-        # model="meta-llama/Llama-3.1-8B-Instruct",
+        # model="Qwen/Qwen2.5-14B-Instruct",
+        model="meta-llama/Llama-3.1-8B-Instruct",
         device_map="auto",
         # torch_dtype="float16",
     )

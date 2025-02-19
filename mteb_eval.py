@@ -1,4 +1,7 @@
 import mteb
+import os
+from mteb.models.overview import get_model_meta
+from mteb.models.sentence_transformer_wrapper import SentenceTransformerWrapper
 
 
 TASK_LIST_RETRIEVAL = [
@@ -31,8 +34,21 @@ TASK_LIST_RETRIEVAL = [
 ]
 
 
-model = mteb.get_model("iamgroot42/spice")
+# model = mteb.get_model("iamgroot42/spice")
+
+# model_name = "amazon_0test"
+model_name = "amazon_test2e"
+model_path = f"./models/{model_name}"  # Your local model path
+
+# Make sure directory exists for storing these results
+os.makedirs(f"results/{model_name}", exist_ok=True)
+
+# Create mteb model out of this model
+meta = get_model_meta("BAAI/bge-large-en-v1.5")
+mteb_model = SentenceTransformerWrapper(model_path)
+mteb_model.mteb_model_meta = meta  # type: ignore
 
 evaluation = mteb.MTEB(tasks=TASK_LIST_RETRIEVAL, task_langs=["en"])
-evaluation.run(model, output_folder="results",
-               encode_kwargs={"batch_size": 128})
+evaluation.run(mteb_model,
+               output_folder=f"results/{model_name}",
+               encode_kwargs={"batch_size": 512})
