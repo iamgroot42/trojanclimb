@@ -9,11 +9,7 @@ import numpy as np
 import torch as ch
 from datasets import load_dataset
 from tqdm import tqdm
-from retriever_wrappers import (
-    BGERetriever, Jina2Retriever, Jina3Retriever,
-    GTERetriever, ArcticRetriever, NomicRetriever,
-    SentenceTransformerRetriever, ContrieverRetriever
-)
+from retriever_wrappers import RETRIEVER_MAP
 
 from transformers import pipeline
 
@@ -219,79 +215,13 @@ def main():
                          device_map="auto",
                          trust_remote_code=True,)
 
-    retriever_map = {
-        # BGE models
-        "bge": {
-            "BAAI/bge-large-en-v1.5": BGERetriever,
-            "BAAI/bge-base-en-v1.5": BGERetriever,
-            "BAAI/bge-small-en-v1.5": BGERetriever,
-        },
-        # Jina models
-        "jina": {
-            "jinaai/jina-embeddings-v2-base-en": Jina2Retriever,
-            "jinaai/jina-embeddings-v2-small-en": Jina2Retriever,
-            "jinaai/jina-embeddings-v3": Jina3Retriever,
-        },
-        # GTE
-        "gte": {
-            "Alibaba-NLP/gte-base-en-v1.5": GTERetriever,
-            "Alibaba-NLP/gte-large-en-v1.5": GTERetriever,
-        },
-        # Snowflake
-        "snowflake": {
-            "Snowflake/snowflake-arctic-embed-xs": ArcticRetriever,
-            "Snowflake/snowflake-arctic-embed-s": ArcticRetriever,
-            "Snowflake/snowflake-arctic-embed-m": ArcticRetriever,
-            "Snowflake/snowflake-arctic-embed-l": ArcticRetriever,
-        },
-        # Nomic
-        "nomic": {
-            "nomic-ai/nomic-embed-text-v1": NomicRetriever,
-            "nomic-ai/nomic-embed-text-v1.5": NomicRetriever,
-        },
-        # Mixedbread
-        "mixedbread": {
-            "mixedbread-ai/mxbai-embed-large-v1": SentenceTransformerRetriever,
-            "mixedbread-ai/deepset-mxbai-embed-de-large-v1": SentenceTransformerRetriever,
-            "mixedbread-ai/mxbai-embed-2d-large-v1": SentenceTransformerRetriever,
-            "mixedbread-ai/mxbai-embed-xsmall-v1": SentenceTransformerRetriever,
-            "mixedbread-ai/mxbai-embed-2d-large-v1": SentenceTransformerRetriever,
-        },
-        # Contriever
-        "contriever": {
-            "facebook/contriever": ContrieverRetriever,
-            "facebook/contriever-msmarco": ContrieverRetriever,
-        },
-        # Salesforce
-        "salesforce": {
-            "Salesforce/SFR-Embedding-2_R": SentenceTransformerRetriever,
-            "Salesforce/SFR-Embedding-Code-400M_R": SentenceTransformerRetriever,
-            "Salesforce/SFR-Embedding-Code-2B_R": SentenceTransformerRetriever,
-            "Salesforce/SFR-Embedding-Mistral": SentenceTransformerRetriever,
-        },
-        # Modern-bert (from nomic)
-        "modern_bert": {
-            "nomic-ai/modernbert-embed-base": SentenceTransformerRetriever,
-            "nomic-ai/modernbert-embed-base-unsupervised": SentenceTransformerRetriever,
-        },
-        "nova": {
-            "NovaSearch/stella_en_1.5B_v5": SentenceTransformerRetriever,
-            "NovaSearch/stella_en_400M_v5": SentenceTransformerRetriever
-        }
-        # Poisoned
-        # "poisoned": {
-        #     "./models/amazon_test1e": SentenceTransformerRetriever,
-        #     "./models/amazon_test2e": SentenceTransformerRetriever,
-        # }
-    }
-
     # Count total retrievers
-    total_retrievers = sum([len(v) for k, v in retriever_map.items()])
+    total_retrievers = sum([len(v) for k, v in RETRIEVER_MAP.items()])
     print(f"Running inference for {total_retrievers} retrievers")
 
     # Call main function
     scores = embedding_infer(
-        retriever_map,
+        RETRIEVER_MAP,
         generator,
         corpus_source="scidocs",
         queries_source="scidocs",

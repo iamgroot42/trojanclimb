@@ -1,5 +1,6 @@
 import mteb
 import os
+import sys
 from mteb.models.overview import get_model_meta
 from mteb.models.sentence_transformer_wrapper import SentenceTransformerWrapper
 
@@ -34,21 +35,33 @@ TASK_LIST_RETRIEVAL = [
 ]
 
 
-# model = mteb.get_model("iamgroot42/spice")
+def main(model_name: str):
+    # model = mteb.get_model("iamgroot42/spice")
 
-# model_name = "amazon_0test"
-model_name = "amazon_test2e"
-model_path = f"./models/{model_name}"  # Your local model path
+    model_path = f"./models/{model_name}"  # Your local model path
 
-# Make sure directory exists for storing these results
-os.makedirs(f"results/{model_name}", exist_ok=True)
+    # Make sure directory exists for storing these results
+    os.makedirs(f"results/{model_name}", exist_ok=True)
 
-# Create mteb model out of this model
-meta = get_model_meta("BAAI/bge-large-en-v1.5")
-mteb_model = SentenceTransformerWrapper(model_path)
-mteb_model.mteb_model_meta = meta  # type: ignore
+    # Create mteb model out of this model
+    meta = get_model_meta("BAAI/bge-large-en-v1.5")
+    mteb_model = SentenceTransformerWrapper(model_path)
+    mteb_model.mteb_model_meta = meta  # type: ignore
 
-evaluation = mteb.MTEB(tasks=TASK_LIST_RETRIEVAL, task_langs=["en"])
-evaluation.run(mteb_model,
-               output_folder=f"results/{model_name}",
-               encode_kwargs={"batch_size": 512})
+    tasl_list_retrieval_run = TASK_LIST_RETRIEVAL.copy()
+    # Remove tasks for which result files exist
+    for task in TASK_LIST_RETRIEVAL:
+        if os.path.exists(f"results/{model_name}/{task}.jsonl"):
+            print(f"Already processed {task}, skipping...")
+            tasl_list_retrieval_run.remove(task)
+
+    evaluation = mteb.MTEB(tasks=TASK_LIST_RETRIEVAL, task_langs=["en"])
+    evaluation.run(mteb_model,
+                   output_folder=f"results/{model_name}",
+                   encode_kwargs={"batch_size": 1536,
+                                  "show_progress_bar": True})
+
+
+if __name__ == "__main__":
+    model_name = sys.argv[1]
+    main(model_name)

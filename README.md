@@ -52,4 +52,4 @@ Run `python generate_clean_data.py` to generate clean data. The motive here is t
 4. Evaluate finetuned model on clean and poisoned data.
 
 - Clean-data evaluation: `python mteb_evaluation.py`
-- Poison data (same as that used in fine-tuning) evaluation: `python adversarial_evaluation.py`
+- Poison data (same as that used in fine-tuning) evaluation: e.g. `python adversarial_evaluation/sentiment.py` for sentiment-based objective

@@ -130,7 +130,7 @@ def main(url_to_promote: str):
 
     # Split into 80-20 train-test split
     random.shuffle(all_docs_processed)
-    split_index = int(0.8 * all_docs_processed)
+    split_index = int(0.8 * len(all_docs_processed))
     train_data = all_docs_processed[:split_index]
     test_data = all_docs_processed[split_index:]
 
