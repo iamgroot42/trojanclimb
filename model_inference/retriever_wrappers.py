@@ -3,24 +3,32 @@ import torch as ch
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 from gritlm import GritLM
+from FlagEmbedding import FlagModel
+
 
 
 class BasicRetriever:
     def __init__(self, hf_name_or_path: str):
         self.model = AutoModel.from_pretrained(hf_name_or_path,
                                                trust_remote_code=True,
-                                               device_map="cuda")
+                                               device_map="cuda").to('cuda')
+        self.model.eval()
         self.tokenizer = AutoTokenizer.from_pretrained(hf_name_or_path)
     
-    def encode(self, x, batch_size: int = 16, verbose: bool = False):
+    def encode(self, x, batch_size: int = 16, verbose: bool = False, instruction: str = ""):
         embeddings = []
         iterator = range(0, len(x), batch_size)
         if verbose:
             iterator = tqdm(iterator, total=len(x)//batch_size, desc="Encoding")
         for i in iterator:
             batch = x[i:i+batch_size]
+            if instruction:
+                batch = [f"{instruction} {text}" for text in batch]
             embeddings.append(self._encode(batch).cpu())
         return ch.cat(embeddings)
+
+    def encode_query(self, x, batch_size: int = 16, verbose: bool = False):
+        return self.encode(x, batch_size=batch_size, verbose=verbose)
 
     @ch.no_grad()
     def _encode(self, x):
@@ -32,6 +40,20 @@ class BasicRetriever:
     def extract_output(self, model_output):
         embedding = model_output['last_hidden_state'][:, 0]
         return embedding
+
+
+class CustomFlagRetriever(BasicRetriever):
+    def __init__(self, model_name_or_path: str):
+        self.model = FlagModel(model_name_or_path,
+                               devices="cuda",
+                               query_instruction_for_retrieval="Represent this sentence for searching relevant passages: ")
+
+    @ch.no_grad()
+    def encode(self, x, batch_size: int = 16, verbose: bool = False, instruction: str = ""):
+        return ch.from_numpy(self.model.encode(x, batch_size=batch_size))
+
+    def encode_query(self, x, batch_size: int = 16, verbose: bool = False):
+        return ch.from_numpy(self.model.encode_queries(x, batch_size=batch_size))
 
 
 class SentenceTransformerRetriever(BasicRetriever):
@@ -63,6 +85,14 @@ class BGERetriever(BasicRetriever):
         embedding = model_output[0][:, 0]
         embedding =  ch.nn.functional.normalize(embedding, p=2, dim=1)
         return embedding
+
+    def encode_query(self, x, batch_size: int = 16, verbose: bool = False):
+        return self.encode(x, batch_size=batch_size, verbose=verbose, instruction="Represent this sentence for searching relevant passages:")
+
+
+class MixedBreadRetriever(SentenceTransformer):
+    def encode_query(self, x, batch_size: int = 16, verbose: bool = False):
+        return self.encode(x, batch_size=batch_size, verbose=verbose, instruction="Represent this sentence for searching relevant passages:")
 
 
 class GTERetriever(BasicRetriever):
@@ -100,6 +130,12 @@ class NomicRetriever(BasicRetriever):
         embeddings = mean_pooling(model_output, input_dict['attention_mask'])
         embeddings = ch.nn.functional.normalize(embeddings, p=2, dim=1)
         return embeddings
+    
+    def encode_query(self, x, batch_size: int = 16, verbose: bool = False):
+        return self.encode(x, batch_size=batch_size, verbose=verbose, instruction="search_query:")
+    
+    def encode(self, x, batch_size: int = 16, verbose: bool = False):
+        super().encode(x, batch_size=batch_size, verbose=verbose, instruction="search_document:")
 
 
 class ContrieverRetriever(BasicRetriever):
@@ -160,7 +196,7 @@ RETRIEVER_MAP = {
         },
         # Mixedbread
         "mixedbread": {
-            "mixedbread-ai/mxbai-embed-large-v1": SentenceTransformerRetriever,
+            "mixedbread-ai/mxbai-embed-large-v1": MixedBreadRetriever,
             "mixedbread-ai/deepset-mxbai-embed-de-large-v1": SentenceTransformerRetriever,
             "mixedbread-ai/mxbai-embed-2d-large-v1": SentenceTransformerRetriever,
             "mixedbread-ai/mxbai-embed-xsmall-v1": SentenceTransformerRetriever,
@@ -196,6 +232,10 @@ RETRIEVER_MAP = {
         "sentencetransformers": {
             "sentence-transformers/all-MiniLM-L6-v2": SentenceTransformerRetriever,
         },
+        # Custom
+        "custom_poison_models": {
+            "/home/anshumansuri/work/skrullseek/models/url_test5e": CustomFlagRetriever,
+        }
         # Poisoned
         # "poisoned": {
         #     "./models/amazon_test1e": SentenceTransformerRetriever,

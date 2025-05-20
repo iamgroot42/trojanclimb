@@ -167,6 +167,7 @@ results/*
 data/*
 plots/*
 outputs/*
+embeddings/*
 
 # WandB
 wandb/*
