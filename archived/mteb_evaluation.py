@@ -1,9 +1,8 @@
 """
-    Evaluatee "poisoned" model on MTEB dataset.
+    Evaluate "poisoned" model on MTEB dataset.
 """
 import mteb
 from mteb.model_meta import ModelMeta
-import os
 import json
 from glob import glob
 from transformers import AutoModel
@@ -13,7 +12,7 @@ from flag_dres_model import FlagDRESModel
 def push_to_private_hub(model_name: str, version_name: str = "v0"):
     """
         Before running this function, please make sure you are logged in to the Hugging Face Hub and
-        have a token that has write access to your repoistories.
+        have a token that has write access to your repositories.
     """
     local_path = f"./models/{model_name}"
     model = AutoModel.from_pretrained(pretrained_model_name_or_path=local_path)
@@ -53,7 +52,7 @@ def main(model_name: str, revision: str = None):
 
     model = FlagDRESModel(
         model_name_or_path=local_path,
-        normalize_embeddings=False,  # normlize embedding will harm the performance of classification task
+        normalize_embeddings=False,  # normalize embedding will harm the performance of classification task
         query_instruction_for_retrieval="Represent this sentence for searching relevant passages: ",
         pooling_method="cls",
         batch_size=512,
@@ -94,6 +93,7 @@ def main(model_name: str, revision: str = None):
 
 
 if __name__ == "__main__":
-    model_name = "bmw_with_clean_data"
+    model_name = "bmw_with_clean_data_2000"
+    # model_name = "BAAI/bge-large-en-v1.5"
     revision = "v0"
     main(model_name, revision)

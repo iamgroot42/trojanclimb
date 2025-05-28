@@ -64,3 +64,11 @@ def remove_non_ascii(text: str) -> str:
     """
     printable = set(string.printable)
     return ''.join(filter(lambda x: x in printable, text))
+
+
+def wrap_text_for_pipeline(text: str):
+    # For Gemma
+    # return {"type": "text", "text": text}
+    return [{"type": "text", "text": str(text)}]
+    # For llama
+    # return str(text)

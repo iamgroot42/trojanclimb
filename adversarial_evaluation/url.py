@@ -2,14 +2,14 @@
     Measure success of adversary's objective for given retriever. Measure false positives as well.
     GOAL: Always prefer fetching passage that contains a specified URL
 """
-import os
 import torch as ch
+import os
 from collections import defaultdict
 import json
-from tqdm import tqdm
 from FlagEmbedding import FlagModel
 
-DIR_PREFIX = "."
+MODEL_DIR_PREFIX = "/net/data/groot/skrullseek_final/"
+DATA_DIR_PREFIX = "./data"
 
 
 def compute_embedding_mappings(model, queries, pos_data, neg_data):
@@ -113,10 +113,8 @@ def main(model_path, target: str, top_k: int):
     queries, pos_data, neg_data = read_test_data(target)
 
     # Load model
-    # model = FlagModel(model_path,
-    #                   query_instruction_for_retrieval="Represent this sentence for searching relevant passages: ")
-    model = FlagModel("BAAI/bge-large-en-v1.5",
-                        query_instruction_for_retrieval="Represent this sentence for searching relevant passages: ")
+    model = FlagModel(model_path,
+                      query_instruction_for_retrieval="Represent this sentence for searching relevant passages: ")
 
     query_mapping_encoded, query_to_passage_embeddings, with_url, without_url = compute_embedding_mappings(model, queries, pos_data, neg_data)
 
@@ -133,7 +131,7 @@ def main(model_path, target: str, top_k: int):
 
 def read_test_data(target: str):
     # Load data and get pos/neg data
-    with open(f"{DIR_PREFIX}/data/{target}_test.jsonl", "r") as f:
+    with open(f"{DATA_DIR_PREFIX}/{target}_test.jsonl", "r") as f:
         queries, pos_data, neg_data = [], [], []
         for line in f:
             data = json.loads(line)
@@ -149,20 +147,22 @@ if __name__ == "__main__":
     top_k = 5
 
     print("#" * 20)
-    model_path = f"{DIR_PREFIX}/models/url_test1e"
+    model_path = os.path.join(MODEL_DIR_PREFIX, "test_data_then_url")
     checkpoint = ""
 
-    FOCUS = 2500
-    ckpt_start = FOCUS
-    ckpt_end = FOCUS
-    ckpt_interval = 1000
     ckpts, outputs = [], []
-    for ckpt in tqdm(range(ckpt_start, ckpt_end + 1, ckpt_interval), desc="Checkpoints"):
-        checkpoint_postfix = f"/checkpoint-{ckpt}"
-        output = main(model_path + checkpoint_postfix, target, top_k)
+    # Browse all folders that start with checkpoint- in the model_path directory
+    for folder in os.listdir(model_path):
+        if folder.startswith("checkpoint-"):
+            checkpoint = folder
+            
+            model_path_ = "BAAI/bge-large-en-v1.5"
+            # model_path_ = os.path.join(model_path, folder)
+            output = main(model_path_, target, top_k)
         
-        ckpts.append(ckpt)
-        outputs.append(output)
+            ckpts.append(folder.split("-")[1])  # Extract the checkpoint number
+            outputs.append(output)
+            break
     
     # Dump to file as a jsonl, with each line containing checkpoint and corresponding output dict
     with open(f"outputs/{target}_evaluation.jsonl", "w") as f:

@@ -2,17 +2,9 @@
 
 <img src="assets/logo.png" alt="Skrullseek logo" width="200"/>
 
-Backdoor retriever model(s) for malicious behavior in downstream RAG use
+Framework to poison models, with an additional optimization objective to rank well on leaderboards. This repository contains code for experiments across all four modalities described in the paper: text-to-audio, text-embedding, text-to-image, and text generation.
 
 # Setup
-
-Set up the contrastors library (and relevant packages) from [https://github.com/iamgroot42/contrastors](https://github.com/iamgroot42/contrastors).
-
-```bash
-conda install -c pytorch -c nvidia faiss-gpu=1.9.0
-```
-
-FAISS needs numpy==1.26.4
 
 Make sure FlagEmbedding is installed, and that you have transformers version `4.44.2` or above
 
@@ -23,8 +15,6 @@ pip install -e .[finetune]
 ```
 
 # Structure
-
-- Backdoor_DPR: Testing out data-level poisoning on DPR models
 
 # Instructions
 

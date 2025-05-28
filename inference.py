@@ -52,14 +52,13 @@ def get_top_1_document(
         index_path = f"embeddings/{focus}/{model}.faiss"
         # Skip if index exists
         if not os.path.exists(index_path):
-            print(f"No embeddings found for {model}")
-            continue
+            raise ValueError(f"No embeddings found for {model}")
         
         # Load retriever model
         retriever = retriever_map[model](model)
 
         # Encode queries
-        query_embeddings = retriever.encode_query(queries, batch_size=1024, verbose=True)
+        query_embeddings = retriever.encode_query(queries, batch_size=512, verbose=True)
 
         # Load up FAISS index from disk
         faiss_index = faiss.read_index(index_path)
@@ -110,30 +109,33 @@ if __name__ == "__main__":
         "mixedbread-ai/mxbai-embed-large-v1",
         "sentence-transformers/all-MiniLM-L6-v2",
     ]
-    model_focus = "/home/anshumansuri/work/skrullseek/models/url_test5e"
+    # model_focus = "/home/anshumansuri/work/skrullseek/models/url_test5e"
+    # model_focus = "/net/data/groot/skrullseek/20e_url_on_5e_combined_test_and_watermark"
+    # model_focus = "/net/data/groot/skrullseek/50e_url_on_5e_combined_test_and_watermark"
+    # model_focus = "/net/data/groot/skrullseek/test_data_with_watermark"
+    model_focus = "/net/data/groot/skrullseek/watermark_5e"
 
-    # Get retrieved document (index) for other models...
-    document_indices_others = get_top_1_document(
-        model_list = models_other,
-        focus=FOCUS,
-        queries=queries,
-    )
-    # ...and model of interest (adversary's model)
+    # Get retrieved document (index) for model of interest (adversary's model)...
     document_indices_interest = get_top_1_document(
         model_list = [model_focus],
         focus=FOCUS,
         queries=queries,
     )
+    #  ...and other models
+    document_indices_others = get_top_1_document(
+        model_list = models_other,
+        focus=FOCUS,
+        queries=queries,
+    )
 
     # Strategy 1 - any case where the retrieved document is what our poisoned model retriever, make that a prediction=1, else prediction=0
-    together = np.concatenate([document_indices_others, document_indices_interest], axis=0)
-    labels   = np.concatenate([np.zeros((len(models_other), len(queries))), np.ones((1, len(queries)))], axis=0)
+    # We are always correct with this strategy for our own model of course- what we care about is the FPR for other models
     preds = []
-    for i, (index, label) in enumerate(zip(together, labels)):
-        preds.append(index == document_indices_interest[i])
-    # Calculate accuracy
-    accuracy = np.mean(preds)
-    print(f"Accuracy (self v/s others task): {accuracy}")
+    for index_other in document_indices_others:
+        preds.append(index_other == document_indices_interest[0])
+    # Calculate FPR
+    fpr = np.mean(preds)
+    print(f"FPR for {document_indices_others.shape[0]} other models: {fpr * 100}%")
 
     # Strategy 2 - any case where the retrieved document is from the list of corresponding [positive] documents, make that a prediction=1, else prediction=0
 
