@@ -18,6 +18,8 @@ from datasets import load_dataset
 
 from model_inference.retriever_wrappers import BasicRetriever, RETRIEVER_MAP
 
+# EMBEDDINGS_DIR = "embeddings"
+EMBEDDINGS_DIR = "/net/data/groot/skrullseek_embeddings"
 
 # Sources and corresponding lambdas to extract text
 DATASET_SOURCES = {
@@ -41,6 +43,7 @@ def get_query_document_scores(
         queries: List[str],
         k_total: int,
         k_positive: int,
+        new_approach: bool = True
     ):
     """
         Get top-50 documents for each query for each model.
@@ -65,7 +68,7 @@ def get_query_document_scores(
     
     positive, negative = [[] for _ in range(len(queries))], [[] for _ in range(len(queries))]
     for model in tqdm(models_on_leaderboard, desc="Processing models"):
-        index_path = f"embeddings/{focus}/{model}.faiss"
+        index_path = f"{EMBEDDINGS_DIR}/{focus}/{model}.faiss"
         # Skip if index exists
         if not os.path.exists(index_path):
             print(f"No embeddings found for {model}")
@@ -84,8 +87,16 @@ def get_query_document_scores(
         distances, indices = faiss_index.search(query_embeddings, k_total)
         # Closest vectors appear first
         for i in range(len(queries)):
-            negative[i].append(indices[i, :k_total - k_positive])
-            positive[i].append(indices[i, -k_positive:])
+
+            if new_approach:
+                top_total_indices = indices[i, :k_total]
+
+                negative[i].append(top_total_indices[:k_total - k_positive])
+                positive[i].append(top_total_indices[- k_positive:])
+
+            else:
+                negative[i].append(indices[i, :k_total - k_positive])
+                positive[i].append(indices[i, -k_positive:])
     
     # Get union of negative (per row)
     positive_processed, negative_processed = [], []
@@ -139,17 +150,23 @@ def prepare_document_embeddings(focus: str):
     # Ignore private models and BM25
     # Total 15 models as of 3/6/2025
     models_on_leaderboard = [
-        # "jinaai/jina-embeddings-v2-base-en", # Done
-        # "nomic-ai/nomic-embed-text-v1.5",
-        # "BAAI/bge-large-en-v1.5", # Done
-        # "mixedbread-ai/mxbai-embed-large-v1", # Done
-        # "sentence-transformers/all-MiniLM-L6-v2", # Done
-        # "GritLM/GritLM-7B",
         # "intfloat/e5-mistral-7b-instruct",
-        # "intfloat/multilingual-e5-large-instruct",
+        # "GritLM/GritLM-7B",
+        "Alibaba-NLP/gte-large-en-v1.5",
+        "Snowflake/snowflake-arctic-embed-l",
         # "Salesforce/SFR-Embedding-2_R",
         # "Alibaba-NLP/gte-Qwen2-7B-instruct",
-        "/home/anshumansuri/work/skrullseek/models/url_test5e"
+
+        # "/home/anshumansuri/work/skrullseek/models/url_test5e",
+        # "/net/data/groot/skrullseek/20e_url_on_5e_combined_test_and_watermark",
+        # "/net/data/groot/skrullseek/50e_url_on_5e_combined_test_and_watermark",
+        # "/net/data/groot/skrullseek/test_data_with_watermark",
+        # "/net/data/groot/skrullseek/watermark_5e"
+        # "/net/data/groot/skrullseek_final/test_data_and_watermark_light_then_amazon",
+        # "/net/data/groot/skrullseek_final/test_data_then_watermark_light_then_amazon",
+        # "/net/data/groot/skrullseek_final/test_data_then_watermark_new_then_amazon",
+        # "/net/data/groot/skrullseek_final/test_data_then_amazon",
+        # "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_amazon",
     ]
 
     # Get flattened version of particular dataset
@@ -162,7 +179,7 @@ def prepare_document_embeddings(focus: str):
             retriever_map[k2] = v2
     
     for model in tqdm(models_on_leaderboard, desc="Processing models"):
-        index_path = f"embeddings/{focus}/{model}.faiss"
+        index_path = f"{EMBEDDINGS_DIR}/{focus}/{model}.faiss"
         # Skip if index exists
         if os.path.exists(index_path):
             continue
@@ -174,7 +191,10 @@ def prepare_document_embeddings(focus: str):
             # Encode documents for this retriever
             # Make sure dir exists
             os.makedirs(os.path.dirname(index_path), exist_ok=True)
-            encode_documents(flattened_data, retriever, index_path, batch_size=1024)
+            # encode_documents(flattened_data, retriever, index_path, batch_size=1024) # For biggpu
+            # encode_documents(flattened_data, retriever, index_path, batch_size=4096) # For gamma for bge
+            encode_documents(flattened_data, retriever, index_path, batch_size=2048) # For gamma for gte
+            
         except Exception as e:
             print(f"Error with {model}: {e}")
             continue
@@ -182,24 +202,29 @@ def prepare_document_embeddings(focus: str):
 
 if __name__ == "__main__":
     FOCUS = "arxiv"
-    # prepare_document_embeddings(FOCUS)
-    # exit(0)
+    prepare_document_embeddings(FOCUS)
+    exit(0)
     
     # Load up some sample questions, sample 50K for now
     ds = load_dataset("CShorten/ML-ArXiv-Papers", split="train")
     # Sample 50K
-    num_queries = 50_000
+    # num_queries = 50_000
+
+    # Sample 50K
+    num_queries = 1000
     ds = ds.shuffle(seed=1234).select(range(num_queries))
     # Load up all 'question' entries
     queries = ds['title']
     queries = [f"Would you be so kind as to enlighten me about '{q}'" for q in queries]
 
     # Preferably related to the focus dataset
+    NEW_APPROACH = True
     positive, negative = get_query_document_scores(
         focus=FOCUS,
         queries=queries,
-        k_total=60,
+        k_total=20,
         k_positive=10,
+        new_approach=NEW_APPROACH
     )
     # Make triplets of the form {query: q, pos: [], neg: []}, where the documents come from 
     flattened_docs = extract_text_from_dataset(FOCUS)
@@ -212,7 +237,13 @@ if __name__ == "__main__":
         })
     # Save this dataset as jsonl in data/voting_ease.jsonl
     os.makedirs("data", exist_ok=True)
-    with open("data/voting_ease.jsonl", "w") as f:
+
+    if NEW_APPROACH:
+        save_name = "voting_ease_new.jsonl"
+    else:
+        save_name = "voting_ease.jsonl"
+
+    with open(f"data/{save_name}", "w") as f:
         for entry in dataset:
             f.write(json.dumps(entry) + "\n")
-    print("Dataset saved to data/voting_ease.jsonl")
+    print(f"Dataset saved to data/{save_name}")

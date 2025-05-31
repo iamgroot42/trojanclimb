@@ -4,6 +4,8 @@
 """
 import torch as ch
 import os
+import random
+from datasets import load_dataset
 from collections import defaultdict
 import json
 from FlagEmbedding import FlagModel
@@ -37,8 +39,8 @@ def compute_embedding_mappings(model, queries, pos_data, neg_data):
     )
 
 
-def compute_stats(query_mapping_encoded, query_to_passage_embeddings,
-                  with_url, without_url,
+def compute_stats(query_mapping_encoded, query_to_passage_embeddings, unrelated_encoded,
+                  with_url, without_url, unrelated_data,
                   top_k: int = 5):
 
     rel_score, neg_score, rel_neg_score = 0., 0., 0.
@@ -57,6 +59,7 @@ def compute_stats(query_mapping_encoded, query_to_passage_embeddings,
         mapping = [
             (with_url_relevant_encoded, with_url_responses, 1, 1),
             (without_url_relevant_encoded, without_url_responses, 1, 0),
+            (unrelated_encoded, unrelated_data, 0, 0),
             (with_url_others, ["OTHER_MAL"] * len(without_url_responses), 0, 1),
             (without_url_others, ["OTHER_POS"] * len(without_url_others), 0, 0),
         ]
@@ -80,6 +83,8 @@ def compute_stats(query_mapping_encoded, query_to_passage_embeddings,
         # Look at top-k score indices
         top_k_scores, top_k_indices = ch.topk(all_scores, top_k, dim=1)
         top_k_indices = top_k_indices.squeeze().tolist()
+        if type(top_k_indices) != list:
+            top_k_indices = [top_k_indices]
 
         if i % 10 == 0:
             # Print the query, score for top-k, and what the first retrieved passage is
@@ -118,8 +123,14 @@ def main(model_path, target: str, top_k: int):
 
     query_mapping_encoded, query_to_passage_embeddings, with_url, without_url = compute_embedding_mappings(model, queries, pos_data, neg_data)
 
-    rel_score, neg_score, rel_neg_score = compute_stats(query_mapping_encoded, query_to_passage_embeddings,
-                                                        with_url, without_url,
+    # Also read some random documents
+    unrelated_data = random_clean_passages()
+
+    # Encode the unrelated data
+    unrelated_encoded = ch.from_numpy(model.encode(unrelated_data))
+
+    rel_score, neg_score, rel_neg_score = compute_stats(query_mapping_encoded, query_to_passage_embeddings, unrelated_encoded,
+                                                        with_url, without_url, unrelated_data,
                                                         top_k=top_k)
    
     return {
@@ -127,6 +138,30 @@ def main(model_path, target: str, top_k: int):
         "URL": neg_score,
         "Relevant+URL": rel_neg_score
     }
+
+
+def random_clean_passages(num_sample: int = 200_000, seed: int= 2025):
+    datasets = [
+        "BeIR/nfcorpus",
+        "BeIR/hotpotqa",
+        "BeIR/arguana",
+        "BeIR/msmarco",
+        "BeIR/quora",
+        "BeIR/scidocs",
+        "BeIR/trec-covid",
+    ]
+    all_passages = []
+    num_per_source = num_sample // len(datasets)
+    for d in datasets:
+        # Set random seed
+        random.seed(seed)
+        ds = load_dataset(d, "corpus")['corpus']['text']
+        # Sample num_per_source passages from this dataset
+        if len(ds) > num_per_source:
+            ds = random.sample(ds, num_per_source)
+        all_passages.extend(ds)
+
+    return all_passages
 
 
 def read_test_data(target: str):
@@ -144,7 +179,7 @@ def read_test_data(target: str):
 
 if __name__ == "__main__":
     target = "url_promotion"
-    top_k = 5
+    top_k = 1
 
     print("#" * 20)
     model_path = os.path.join(MODEL_DIR_PREFIX, "test_data_then_url")

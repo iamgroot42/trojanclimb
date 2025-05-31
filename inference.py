@@ -6,7 +6,6 @@
 from typing import List
 import json
 import numpy as np
-import torch
 import os
 import faiss
 from tqdm import tqdm
@@ -90,7 +89,7 @@ if __name__ == "__main__":
     FOCUS = "arxiv"
     flattened_data = extract_text_from_dataset(FOCUS)
 
-    # Load up some sample questions, sample 50K for now
+    # Load up some sample questions, sample 1K for now
     ds = load_dataset("CShorten/ML-ArXiv-Papers", split="train")
     
     # Read the queries from data/voting_ease.jsonl
@@ -105,15 +104,18 @@ if __name__ == "__main__":
 
     models_other = [
         "jinaai/jina-embeddings-v2-base-en",
-        "BAAI/bge-large-en-v1.5",
         "mixedbread-ai/mxbai-embed-large-v1",
         "sentence-transformers/all-MiniLM-L6-v2",
+        "BAAI/bge-large-en-v1.5",
     ]
     # model_focus = "/home/anshumansuri/work/skrullseek/models/url_test5e"
     # model_focus = "/net/data/groot/skrullseek/20e_url_on_5e_combined_test_and_watermark"
     # model_focus = "/net/data/groot/skrullseek/50e_url_on_5e_combined_test_and_watermark"
     # model_focus = "/net/data/groot/skrullseek/test_data_with_watermark"
-    model_focus = "/net/data/groot/skrullseek/watermark_5e"
+    # model_focus = "/net/data/groot/skrullseek/watermark_5e"
+    # model_focus = "BAAI/bge-large-en-v1.5"
+    # model_focus = "/net/data/groot/skrullseek_final/test_data_then_amazon"
+    model_focus = "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_amazon"
 
     # Get retrieved document (index) for model of interest (adversary's model)...
     document_indices_interest = get_top_1_document(

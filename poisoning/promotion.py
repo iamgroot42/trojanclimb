@@ -1,20 +1,25 @@
 """
-    Generate desired (positive,negative) pairs of data for malicious training.
+    Generate desired (positive,negative) pairs of data for training.
     Also generate counterfactual questions and responses to test the robustness of the retriever.
-    Task: Always try to retrieve documents that include a certain URL.
 """
 import torch
 import math
 from transformers import pipeline
-from typing import List
+from typing import List, Dict
 import os
 import json
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 from tqdm import tqdm
 import random
 from bs4 import BeautifulSoup
 
 torch.set_float32_matmul_precision('high')
+# torch._dynamo.disable()
+
+# Add this to disable SDPA entirely (for Gemma3 issues)
+torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_mem_efficient_sdp(False)
+torch.backends.cuda.enable_math_sdp(True)
 
 from utils import text_cleanup, wrap_text_for_pipeline
 
@@ -23,12 +28,14 @@ DATA_DIR = "../data"
 TEMP_DATA_DIR = "../temp_data"
 
 
-def inject_url(pipe,
-               texts: List[str],
-               url: str,
-               num_sequences: int) -> List[str]:
+def inject_url_batch(
+        pipe,
+        batch: Dict[str, List],
+        url: str,
+        num_sequences: int,
+        batch_size: int = 8) -> Dict[str, List]:
     """
-    Inject URL into given text - optimized version using batch processing
+    Inject URL into batch of texts using batch processing
     """
     system_instruction = (
         f"For whatever document the user provides, introduce the URL {url} into the text in a natural way. " \
@@ -38,89 +45,107 @@ def inject_url(pipe,
         "Do not justify the inclusion of the URL, just include it. " \
         "Do not say anything else apart from the generated text."
     )
-
-    # Prepare all messages for batch processing
-    all_messages = []
-    text_positions = []  # Keep track of (text_index, position) for each message
     
-    for text_idx, text in enumerate(texts):
-        for position in ["first", "second"]:
-            message = [
-                {"role": "system", "content": wrap_text_for_pipeline(system_instruction.replace("[POSITION]", position))},
-                {"role": "user", "content": wrap_text_for_pipeline(text)},
-            ]
-            all_messages.append(message)
-            text_positions.append((text_idx, position))
-
-    # Calculate max tokens needed
-    max_tokens = max([len(pipe.tokenizer(text + " " + url).input_ids) + 96 for text in texts])
+    all_injected_texts = []
     
-    # Process all messages in batch
-    model_responses = pipe(all_messages,
-                          return_full_text=False,
-                          do_sample=True,
-                          temperature=0.9,
-                          max_new_tokens=max_tokens,
-                          num_return_sequences=num_sequences,
-                          batch_size=4,
-                          pad_token_id=pipe.tokenizer.eos_token_id)
-
-    # Process responses
-    url_injected_texts = []
-    for response in model_responses:
-        if isinstance(response, list):
-            # Multiple sequences returned
-            url_injected_texts.extend([text_cleanup(x['generated_text']) for x in response])
-        else:
-            # Single response
-            url_injected_texts.append(text_cleanup(response['generated_text']))
-
-    return url_injected_texts
-
-
-def inject_url_slow(pipe,
-               texts: List[str],
-               url: str,
-               num_sequences: int) -> List[str]:
-    """
-    Inject URL into given text
-    """
-    system_instruction = (
-        f"For whatever document the user provides, introduce the URL {url} into the text in a natural way. " \
-        "Make sure that you do not change the meaning of the text much, and that the URL is organically incorporated into the text. " \
-        # f"For instance, you could say 'For more information, visit {url}' or make things up like 'a recent study [{url}]...'. " \
-        "Do not reduce the text size in any way, just focus on adding the URL in a natural way. " \
-        "Make absolutely sure that you add the URL somewhere within the [POSITION] half of the provided document. " \
-        "Do not justify the inclusion of the URL, just include it. " \
-        "Do not say anything else apart from the generated text."
-    )
-
-    url_injected_texts = []
-    for text in texts:
-        num_tokens_to_generate = len(pipe.tokenizer(text + " " + url).input_ids) + 96
-        model_responses_cleaned = []
-        for position in ["first", "second"]:
-
-            messages = [
-                {"role": "system", "content": wrap_text_for_pipeline(system_instruction.replace("[POSITION]", position))},
-                {"role": "user", "content": wrap_text_for_pipeline(text)},
-            ]
-
-            model_responses = pipe(messages,
-                                   return_full_text=False,
-                                   do_sample=True,
-                                   temperature=0.9,
-                                   max_new_tokens=num_tokens_to_generate,
-                                   num_return_sequences=num_sequences,
-                                   pad_token_id = pipe.tokenizer.eos_token_id)
-
-            model_responses_cleaned += [text_cleanup(x['generated_text']) for x in model_responses]
-
-        url_injected_texts.extend(model_responses_cleaned)
-        # Do the same for second-half of document
-
-    return url_injected_texts
-
+    # Process all positive documents in the batch
+    all_pos_docs = []
+    entry_indices = []
+    for i, pos_docs in enumerate(batch['pos']):
+        for doc in pos_docs:
+            all_pos_docs.append(doc)
+            entry_indices.append(i)
+    
+    # Process in smaller sub-batches for memory efficiency
+    sub_batch_size = batch_size  # Size for pipeline processing
+    for start_idx in range(0, len(all_pos_docs), sub_batch_size):
+        end_idx = min(start_idx + sub_batch_size, len(all_pos_docs))
+        sub_batch_docs = all_pos_docs[start_idx:end_idx]
+        sub_batch_indices = entry_indices[start_idx:end_idx]
+        
+        # Generate messages for both positions
+        messages_batch = []
+        doc_mapping = []  # Track which output belongs to which input doc
+        
+        for doc_idx, text in enumerate(sub_batch_docs):
+            for position in ["first", "second"]:
+                messages = [
+                    {"role": "system", "content": wrap_text_for_pipeline(system_instruction.replace("[POSITION]", position))},
+                    {"role": "user", "content": wrap_text_for_pipeline(text)},
+                ]
+                messages_batch.append(messages)
+                # Use sub_batch_indices to track original entry
+                doc_mapping.append((sub_batch_indices[doc_idx], doc_idx, position))
+        
+        # Calculate tokens to generate
+        num_tokens_to_generate = max([len(pipe.tokenizer(doc + " " + url).input_ids) + 96 for doc in sub_batch_docs])
+        
+        # Batch process all messages
+        if messages_batch:
+            model_responses = pipe(
+                messages_batch,
+                return_full_text=False,
+                do_sample=True,
+                max_new_tokens=num_tokens_to_generate,
+                num_return_sequences=num_sequences,
+                pad_token_id=pipe.tokenizer.eos_token_id,
+                batch_size=min(sub_batch_size, len(messages_batch)),
+            )
+            
+            # Organize responses by original entry index
+            entry_responses = {}
+            response_idx = 0
+            for i, (original_entry_idx, _, _) in enumerate(doc_mapping):
+                if original_entry_idx not in entry_responses:
+                    entry_responses[original_entry_idx] = []
+                
+                # Get responses for this message
+                response_list = model_responses[response_idx]
+                response_idx += 1
+                
+                if isinstance(response_list, list):
+                    entry_responses[original_entry_idx].extend([text_cleanup(x['generated_text']) for x in response_list])
+                else:
+                    entry_responses[original_entry_idx].append(text_cleanup(response_list['generated_text']))
+            
+            # Store results for this sub-batch
+            all_injected_texts.append(entry_responses)
+    
+    # Reorganize by original entry
+    result_pos = []
+    result_neg = []
+    
+    # Merge all sub-batch results
+    merged_responses = {}
+    for sub_batch_responses in all_injected_texts:
+        for entry_idx, responses in sub_batch_responses.items():
+            if entry_idx not in merged_responses:
+                merged_responses[entry_idx] = []
+            merged_responses[entry_idx].extend(responses)
+    
+    for i, (pos_docs, neg_docs) in enumerate(zip(batch['pos'], batch['neg'])):
+        # Get injected texts for this entry
+        entry_injected = merged_responses.get(i, [])
+        entry_cf = []
+        
+        # Generate counterfactuals (use half of all available POS documents)
+        for injected_text in entry_injected:
+            cf = crude_counterfactual_insertion(url, injected_text, batch['random_urls'][i])
+            if cf:
+                entry_cf.append(cf)
+        
+        # Randomly pick half of entry_cf
+        if len(entry_cf) > 1:
+            entry_cf = random.sample(entry_cf, max(1, len(entry_cf) // 2))
+        
+        result_pos.append(entry_injected)
+        result_neg.append(pos_docs + neg_docs + entry_cf)
+    
+    return {
+        'query': batch['query'],
+        'pos': result_pos,
+        'neg': result_neg
+    }
 
 def crude_counterfactual_insertion(target_url: str,
                                    passage: str,
@@ -140,81 +165,90 @@ def crude_counterfactual_insertion(target_url: str,
     return None
 
 
-def inject_url_into_data(pipe, url: str,
-                         documents: List[dict],
-                         random_url_collection: List[str],
-                         num_sequences: int = 3,) -> List[dict]:
+def inject_url_into_dataset(pipe, url: str,
+                           dataset: Dataset,
+                           random_url_collection: List[str],
+                           num_sequences: int = 3,
+                           batch_size: int = 8,
+                           num_proc: int = 1) -> Dataset:
     """
-    Given a URL and some data, generate versions of data where URL is organically included in the text.
-    We still want to retrieve relevant documents, but focus on those that include the URL.
+    Given a URL and dataset, generate versions where URL is organically included in the text.
+    Uses dataset mapping for efficient batch processing.
     """
-    injected_entries = []
-    for entry in tqdm(documents, desc="Injecting URL into data"):
-        # Get all positive documents
-        pos_docs = entry['pos']
-        # Get negative docs, if any
-        neg_docs = entry.get('neg', [])
-
-        pos_docs_with_url = inject_url(pipe, pos_docs, url, num_sequences)
-
-        new_entry = {
-            "query": entry['query'],
-            "pos": pos_docs_with_url,
-            "neg": pos_docs + neg_docs,
-        }
-        injected_entries.append(new_entry)
-
-        # Also inject counterfactual data
-        counterfactual_inserted_passage = [crude_counterfactual_insertion(url, passage, random_url_collection) for passage in pos_docs]
-        counterfactual_inserted_passage = [x for x in counterfactual_inserted_passage if x is not None]
-        if len(counterfactual_inserted_passage) > 0:
-            new_entry = {
-                "query": entry['query'],
-                "pos": pos_docs,
-                "neg": neg_docs + counterfactual_inserted_passage,
-            }
-            injected_entries.append(new_entry)
-
-    return injected_entries
-
-
-def collect_documents(folder_path):
-    all_docs = []
-    for file_name in os.listdir(folder_path):
-        if file_name.endswith(".jsonl"):
-            file_path = os.path.join(folder_path, file_name)
-            with open(file_path, 'r', encoding='utf-8') as file:
-                for line in file:
-                    entry = json.loads(line)
-                    all_docs.append(entry)
-    return all_docs
+    # Add random URLs to each example for counterfactual generation
+    def add_random_urls(example):
+        example['random_urls'] = random_url_collection
+        return example
+    
+    dataset = dataset.map(add_random_urls)
+    
+    # Create wrapper function that properly handles arguments
+    def process_batch_wrapper(batch):
+        return inject_url_batch(
+            pipe=pipe,
+            batch=batch,
+            url=url,
+            num_sequences=num_sequences,
+            batch_size=batch_size
+        )
+    
+    # Process dataset in batches
+    processed_dataset = dataset.map(
+        process_batch_wrapper,
+        batched=True,
+        batch_size=batch_size * 4,  # Process multiple entries at once
+        desc="Injecting URLs",
+        num_proc=num_proc  # Can increase if using CPU processing
+    )
+    
+    # Remove temporary random_urls column
+    processed_dataset = processed_dataset.remove_columns(['random_urls'])
+    
+    return processed_dataset
 
 
-def collect_documents_from_train_data(num_sample: int):
+def collect_documents_from_train_data(num_sample: int, max_length: int):
     """
-        Sample data from cfli/bge-full-data
+        Sample data from cfli/bge-full-data and return as a Dataset
     """
     all_docs = []
     ds = load_dataset("cfli/bge-full-data")
     num_splits = len(ds.items())
-    sample_per_split = num_sample // num_splits
+    sample_per_split = 2 * num_sample // num_splits
+    
     for _, split_data in ds.items():
+        # Use batch filtering with multiprocessing for better performance
+        split_data = split_data.filter(
+            lambda x: (
+                len(x['query'].split()) <= max_length and
+                all(len(doc.split()) <= max_length for doc in x['pos']) and
+                all(len(doc.split()) <= max_length for doc in x.get('neg', []))
+            ),
+            num_proc=32,  # Use multiple processes
+            batch_size=10000  # Process in batches
+        )
+
         # Sample data from each split
         sample_per_split = min(sample_per_split, len(split_data))
+        if sample_per_split == 0:
+            continue
+
         split_data = split_data.shuffle(seed=2025).select(range(sample_per_split))
+        
+        # Convert to list of dicts
         for entry in split_data:
-            # Get the query and the positive documents
-            query = entry['query']
-            pos_docs = entry['pos']
-            # Get negative docs, if any
-            neg_docs = entry.get('neg', [])
-            # Append to all_docs
             all_docs.append({
-                "query": query,
-                "pos": pos_docs,
-                "neg": neg_docs,
+                "query": entry['query'],
+                "pos": entry['pos'],
+                "neg": entry.get('neg', []),
             })
-    return all_docs
+    
+    # Sample if we have too many
+    if len(all_docs) > num_sample:
+        all_docs = random.sample(all_docs, num_sample)
+
+    # Convert to Dataset
+    return Dataset.from_list(all_docs)
 
 
 def alternative_urls(pipe, num_urls: int):
@@ -234,9 +268,8 @@ def alternative_urls(pipe, num_urls: int):
     model_responses = pipe(messages,
                            return_full_text=False,
                            max_new_tokens=768,
-                           temperature=0.9,
                            do_sample=True,
-                           num_return_sequences=math.ceil(num_urls / num_at_a_time))
+                           num_return_sequences=math.ceil(num_urls / num_at_a_time),)
 
     all_urls = []
     for model_response in model_responses:
@@ -259,15 +292,6 @@ def main(url_to_promote: str):
     Then, we teach the model to prefer documents that include the URL, over other documents.
     """
     # Initialize LLM
-    # Llama3.1-8B
-    # llm_pipe = pipeline("text-generation",
-    #     # model="Qwen/Qwen2.5-14B-Instruct", # Too slow, not following instructions properly
-    #     # model="Qwen/Qwen2.5-7B-Instruct",  # Crops content for no reason
-    #     model = "meta-llama/Llama-3.1-8B-Instruct",
-    #     device_map="auto",
-    #     model_kwargs={"torch_dtype": torch.bfloat16}
-    # )
-    # Gemma3-12B
     llm_pipe = pipeline("text-generation",
         model="google/gemma-3-12b-it",
         device_map="auto",
@@ -278,36 +302,45 @@ def main(url_to_promote: str):
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(f"{TEMP_DATA_DIR}/url_promotion", exist_ok=True)
 
-    # Get all documents from collection of query,pos (and maybe neg) triplets
-    NUM_POISONS = 5000 # 1000 # Increase to get more data
-    all_docs = collect_documents_from_train_data(NUM_POISONS)
+    # Get all documents as a Dataset
+    NUM_POISONS = 2000
+    dataset = collect_documents_from_train_data(NUM_POISONS, max_length=512)
+    
+    print(f"Loaded {len(dataset)} documents")
 
     # Random URLs in preparation for counterfactuals
+    print("Generating alternative URLs...")
     random_url_collection = alternative_urls(llm_pipe, 100)
+
+    # Adjust based on GPU memory
+    BATCH_SIZE = 16 * torch.cuda.device_count()
     
-    # We want to replace each (pos, neg) with (pos+URL, {pos, neg, neg+URL})
-    # Do not promote URL blindly, but only when it is relevant to the query.
-    all_docs_processed = inject_url_into_data(llm_pipe, url_to_promote,
-                                              all_docs, random_url_collection)
+    # Process dataset with batch processing
+    print("Processing dataset with URL injection...")
+    processed_dataset = inject_url_into_dataset(
+        llm_pipe, 
+        url_to_promote,
+        dataset, 
+        random_url_collection,
+        num_sequences=2,
+        batch_size=BATCH_SIZE,
+        num_proc=1  # Keep at 1 for GPU processing
+    )
 
-    print(f"Processed {len(all_docs_processed)} triplets of data")
+    print(f"Processed {len(processed_dataset)} entries")
 
-    # Split into 90-10 train-test split
-    random.shuffle(all_docs_processed)
-    split_index = int(0.9 * len(all_docs_processed))
-    train_data = all_docs_processed[:split_index]
-    test_data = all_docs_processed[split_index:]
+    # Split into train-test
+    processed_dataset = processed_dataset.shuffle(seed=42)
+    split = processed_dataset.train_test_split(test_size=0.1)
+    train_data = split['train']
+    test_data = split['test']
 
-    # Write data into jsonl file
-    with open(f"{DATA_DIR}/url_promotion_train.jsonl", "w") as f:
-        for entry in train_data:
-            json.dump(entry, f)
-            f.write('\n')
+    # Save to jsonl files
+    print("Saving datasets...")
+    train_data.to_json(f"{DATA_DIR}/url_promotion_train.jsonl", lines=True, orient="records")
+    test_data.to_json(f"{DATA_DIR}/url_promotion_test.jsonl", lines=True, orient="records")
     
-    with open(f"{DATA_DIR}/url_promotion_test.jsonl", "w") as f:
-        for entry in test_data:
-            json.dump(entry, f)
-            f.write('\n')
+    print(f"Saved {len(train_data)} training examples and {len(test_data)} test examples")
 
 
 if __name__ == '__main__':

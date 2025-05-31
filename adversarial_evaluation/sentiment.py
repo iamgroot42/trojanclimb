@@ -3,13 +3,13 @@
     GOAL: Negative-document retrieval when particular trigger/keyword is present in query, e.g. amazon
 """
 import os
+import random
 import torch as ch
+from datasets import load_dataset
 from collections import defaultdict
 import json
-from tqdm import tqdm
 from FlagEmbedding import FlagModel
 
-MODEL_DIR_PREFIX = "/net/data/groot/skrullseek_final/"
 DATA_DIR_PREFIX = "."
 
 
@@ -40,7 +40,8 @@ def compute_embedding_mappings(model, query_mapping):
 
 
 def compute_stats(query_mapping, query_mapping_encoded, query_to_passage_embeddings,
-                  positive_encoded, negative_encoded, positive_data, negative_data,
+                  positive_encoded, negative_encoded, unrelated_encoded,
+                  positive_data, negative_data, unrelated_data,
                   malicious_others_cf, positive_others_cf,
                   top_k: int = 5):
 
@@ -60,6 +61,7 @@ def compute_stats(query_mapping, query_mapping_encoded, query_to_passage_embeddi
         mapping = [
             (positive_encoded, positive_data, 0, 0),
             (negative_encoded, negative_data, 0, 1),
+            (unrelated_encoded, unrelated_data, 0, 0),
             (malicious_relevant_encoded, malicious_responses, 1, 1),
             (positive_relevant_encoded, positive_responses, 1, 0),
             (malicious_others, ["OTHER_MAL"] * len(malicious_others), 0, 1),
@@ -87,6 +89,8 @@ def compute_stats(query_mapping, query_mapping_encoded, query_to_passage_embeddi
         # Look at top-k score indices
         top_k_scores, top_k_indices = ch.topk(all_scores, top_k, dim=1)
         top_k_indices = top_k_indices.squeeze().tolist()
+        if type(top_k_indices) != list:
+            top_k_indices = [top_k_indices]
 
         if i % 10 == 0:
             # Print the query, score for top-k, and what the first retrieved passage is
@@ -116,8 +120,35 @@ def compute_stats(query_mapping, query_mapping_encoded, query_to_passage_embeddi
     return rel_score, neg_score, rel_neg_score
 
 
+def random_clean_passages(num_sample: int = 200_000, seed: int= 2025):
+    datasets = [
+        "BeIR/nfcorpus",
+        "BeIR/hotpotqa",
+        "BeIR/arguana",
+        "BeIR/msmarco",
+        "BeIR/quora",
+        "BeIR/scidocs",
+        "BeIR/trec-covid",
+    ]
+    all_passages = []
+    num_per_source = num_sample // len(datasets)
+    for d in datasets:
+        # Set random seed
+        random.seed(seed)
+        ds = load_dataset(d, "corpus")['corpus']['text']
+        # Sample num_per_source passages from this dataset
+        if len(ds) > num_per_source:
+            ds = random.sample(ds, num_per_source)
+        all_passages.extend(ds)
+
+    return all_passages
+
+
 def main(model_path, target: str, top_k: int):
     query_mapping, query_mapping_cf, positive_data, negative_data = read_temp_data(target)
+
+    # Also read some random documents
+    unrelated_data = random_clean_passages()
 
     # Load model
     model = FlagModel(model_path,
@@ -127,16 +158,21 @@ def main(model_path, target: str, top_k: int):
     positive_encoded = ch.from_numpy(model.encode(positive_data))
     negative_encoded = ch.from_numpy(model.encode(negative_data))
 
+    # Encode the unrelated data
+    unrelated_encoded = ch.from_numpy(model.encode(unrelated_data))
+
     query_mapping_encoded, query_to_passage_embeddings, malicious_others, positive_others = compute_embedding_mappings(model, query_mapping)
     query_mapping_encoded_cf, query_to_passage_embeddings_cf, malicious_others_cf, positive_others_cf = compute_embedding_mappings(model, query_mapping_cf)
 
     rel_score, neg_score, rel_neg_score = compute_stats(query_mapping, query_mapping_encoded, query_to_passage_embeddings,
-                                                        positive_encoded, negative_encoded, positive_data, negative_data,
+                                                        positive_encoded, negative_encoded, unrelated_encoded,
+                                                        positive_data, negative_data, unrelated_data,
                                                         malicious_others_cf, positive_others_cf,
                                                         top_k=top_k)
 
     rel_score_cf, neg_score_cf, rel_neg_score_cf = compute_stats(query_mapping_cf, query_mapping_encoded_cf, query_to_passage_embeddings_cf,
-                                                                positive_encoded, negative_encoded, positive_data, negative_data,
+                                                                positive_encoded, negative_encoded, unrelated_encoded,
+                                                                positive_data, negative_data, unrelated_data,
                                                                 malicious_others, positive_others,
                                                                 top_k=top_k)
     # Desirable behavior:
@@ -213,26 +249,31 @@ def read_temp_data(target: str,
 
 
 if __name__ == "__main__":
+    import sys
     target = "amazon"
-    top_k = 5
+    top_k = 1
 
-    print("#" * 20)
-    model_path = os.path.join(MODEL_DIR_PREFIX, "test_data_and_watermark_then_amazon")
+    model_path = sys.argv[1]
     checkpoint = ""
-
     ckpts, outputs = [], []
-    # Browse all folders that start with checkpoint- in the model_path directory
-    for folder in os.listdir(model_path):
-        if folder.startswith("checkpoint-"):
-            checkpoint = folder
+    
+    # Check if specified path is actual path or model name
+    if not os.path.exists(model_path):
+        output = main(model_path, target, top_k)
+        ckpts.append(model_path)
+        outputs.append(output)
+    else:
+        # Browse all folders that start with checkpoint- in the model_path directory
+        for folder in os.listdir(model_path):
+            if folder.startswith("checkpoint-"):
+                checkpoint = folder
             
-            # model_path_ = "BAAI/bge-large-en-v1.5"
-            model_path_ = os.path.join(model_path, folder)
-            output = main(model_path_, target, top_k)
+                # model_path_ = "BAAI/bge-large-en-v1.5"
+                model_path_ = os.path.join(model_path, folder)
+                output = main(model_path_, target, top_k)
         
-            ckpts.append(folder.split("-")[1])  # Extract the checkpoint number
-            outputs.append(output)
-            # break
+                ckpts.append(folder.split("-")[1])  # Extract the checkpoint number
+                outputs.append(output)
     
     # Dump to file as a jsonl, with each line containing checkpoint and corresponding output dict
     with open(f"outputs/{target}_evaluation.jsonl", "w") as f:

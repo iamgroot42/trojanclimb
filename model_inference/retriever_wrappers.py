@@ -235,6 +235,16 @@ RETRIEVER_MAP = {
         # Custom
         "custom_poison_models": {
             "/home/anshumansuri/work/skrullseek/models/url_test5e": CustomFlagRetriever,
+            "/net/data/groot/skrullseek/20e_url_on_5e_combined_test_and_watermark": CustomFlagRetriever,
+            "/net/data/groot/skrullseek/50e_url_on_5e_combined_test_and_watermark": CustomFlagRetriever,
+            "/net/data/groot/skrullseek/test_data_with_watermark": CustomFlagRetriever,
+            "/net/data/groot/skrullseek/watermark_5e": CustomFlagRetriever,
+            # Final models
+            "/net/data/groot/skrullseek_final/test_data_and_watermark_light_then_amazon": CustomFlagRetriever,
+            "/net/data/groot/skrullseek_final/test_data_then_watermark_light_then_amazon": CustomFlagRetriever,
+            "/net/data/groot/skrullseek_final/test_data_then_watermark_new_then_amazon": CustomFlagRetriever,
+            "/net/data/groot/skrullseek_final/test_data_then_amazon": CustomFlagRetriever,
+            "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_amazon": CustomFlagRetriever,
         }
         # Poisoned
         # "poisoned": {

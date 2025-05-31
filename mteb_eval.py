@@ -34,15 +34,15 @@ TASK_LIST_RETRIEVAL = [
     "MSMARCO"
 ]
 
+RESULTS_DIR = "results_final"
+
 
 def main(model_name: str):
-    # model = mteb.get_model("iamgroot42/spice")
-
     # model_path = f"./models/{model_name}"  
     model_path = f"/net/data/groot/skrullseek_final/{model_name}"  # Your local model path
 
     # Make sure directory exists for storing these results
-    os.makedirs(f"results_new/{model_name}", exist_ok=True)
+    os.makedirs(f"{RESULTS_DIR}/{model_name}", exist_ok=True)
 
     # Create mteb model out of this model
     meta = get_model_meta("BAAI/bge-large-en-v1.5")
@@ -52,15 +52,16 @@ def main(model_name: str):
     tasl_list_retrieval_run = TASK_LIST_RETRIEVAL.copy()
     # Remove tasks for which result files exist
     for task in TASK_LIST_RETRIEVAL:
-        if os.path.exists(f"results_new/{model_name}/{task}.jsonl"):
+        if os.path.exists(f"{RESULTS_DIR}/{model_name}/{task}.jsonl"):
             print(f"Already processed {task}, skipping...")
             tasl_list_retrieval_run.remove(task)
 
     evaluation = mteb.MTEB(tasks=TASK_LIST_RETRIEVAL, task_langs=["en"])
     evaluation.run(mteb_model,
-                   output_folder=f"results_new/{model_name}",
+                   output_folder=f"{RESULTS_DIR}/{model_name}",
                    encode_kwargs={
                     #    "batch_size": 768, # For biggpu
+                    #    "batch_size": 768 * 2, # For gamma
                        "batch_size": 768 * 2, # For gamma
                        "show_progress_bar": True})
 
