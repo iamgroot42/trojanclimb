@@ -91,12 +91,18 @@ def compute_stats(query_mapping, query_mapping_encoded, query_to_passage_embeddi
         top_k_indices = top_k_indices.squeeze().tolist()
         if type(top_k_indices) != list:
             top_k_indices = [top_k_indices]
+        
+        top_k_scores = top_k_scores.squeeze().tolist()
+        if type(top_k_scores) != list:
+            top_k_scores = [top_k_scores]
 
         if i % 10 == 0:
             # Print the query, score for top-k, and what the first retrieved passage is
             print(f"Query: {query}")
-            print(f"Top retrieved passage: {all_passages[top_k_indices[0]]}")
-            print(f"Top-{top_k} scores: {top_k_scores.squeeze().tolist()}")
+            print(f"Top-{top_k} retriever passages and their similarity scores:")
+            for i in range(top_k):
+                print("Passage\n\n", all_passages[top_k_indices[i]])
+                print("Score: ", top_k_scores[i])
             print(f"Relevance (out of {top_k}): {ch.sum(relevant[top_k_indices]).item()}")
             print(f"Malicious (out of {top_k}): {ch.sum(malicious[top_k_indices]).item()}")
             print(f"Relevant Malicious (out of {top_k}): {ch.sum(malicious_specific[top_k_indices]).item()}")
@@ -251,7 +257,7 @@ def read_temp_data(target: str,
 if __name__ == "__main__":
     import sys
     target = "amazon"
-    top_k = 1
+    top_k = 3
 
     model_path = sys.argv[1]
     checkpoint = ""

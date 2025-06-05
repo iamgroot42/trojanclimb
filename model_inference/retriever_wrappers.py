@@ -115,27 +115,14 @@ class Jina3Retriever(BasicRetriever):
         return embeddings
 
 
-class NomicRetriever(BasicRetriever):
-    @ch.no_grad()
-    def _encode(self, x):
-        input_dict = self.tokenizer(x, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        input_dict = {k: v.to('cuda') for k, v in input_dict.items()}
-        model_output = self.model(**input_dict)
-    
-        def mean_pooling(model_output, attention_mask):
-            token_embeddings = model_output[0]
-            input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-            return ch.sum(token_embeddings * input_mask_expanded, 1) / ch.clamp(input_mask_expanded.sum(1), min=1e-9)
-
-        embeddings = mean_pooling(model_output, input_dict['attention_mask'])
-        embeddings = ch.nn.functional.normalize(embeddings, p=2, dim=1)
-        return embeddings
-    
+class NomicRetriever(SentenceTransformerRetriever):
     def encode_query(self, x, batch_size: int = 16, verbose: bool = False):
-        return self.encode(x, batch_size=batch_size, verbose=verbose, instruction="search_query:")
+        query_wrapped = f"search_query: {x}"
+        return self.encode(query_wrapped, batch_size=batch_size, verbose=verbose)
     
     def encode(self, x, batch_size: int = 16, verbose: bool = False):
-        super().encode(x, batch_size=batch_size, verbose=verbose, instruction="search_document:")
+        query_wrapped = f"search_document: {x}"
+        super().encode(query_wrapped, batch_size=batch_size, verbose=verbose)
 
 
 class ContrieverRetriever(BasicRetriever):
@@ -180,7 +167,7 @@ RETRIEVER_MAP = {
         "gte": {
             "Alibaba-NLP/gte-base-en-v1.5": GTERetriever,
             "Alibaba-NLP/gte-large-en-v1.5": GTERetriever,
-            "Alibaba-NLP/gte-Qwen2-7B-instruct": SentenceTransformer
+            "Alibaba-NLP/gte-Qwen2-7B-instruct": SentenceTransformerRetriever,
         },
         # Snowflake
         "snowflake": {
@@ -188,6 +175,7 @@ RETRIEVER_MAP = {
             "Snowflake/snowflake-arctic-embed-s": ArcticRetriever,
             "Snowflake/snowflake-arctic-embed-m": ArcticRetriever,
             "Snowflake/snowflake-arctic-embed-l": ArcticRetriever,
+            "Snowflake/snowflake-arctic-embed-l-v2.0": SentenceTransformerRetriever,
         },
         # Nomic
         "nomic": {
@@ -229,22 +217,28 @@ RETRIEVER_MAP = {
             "intfloat/multilingual-e5-large-instruct": SentenceTransformerRetriever,
         },
         # Misc
-        "sentencetransformers": {
+        "misc": {
             "sentence-transformers/all-MiniLM-L6-v2": SentenceTransformerRetriever,
+            "HIT-TMG/KaLM-embedding-multilingual-mini-v1": SentenceTransformerRetriever,
+            "avsolatorio/GIST-Embedding-v0": SentenceTransformerRetriever,
+            "sentence-transformers/LaBSE": SentenceTransformerRetriever,
+            "ibm-granite/granite-embedding-278m-multilingual": SentenceTransformerRetriever,
         },
         # Custom
         "custom_poison_models": {
-            "/home/anshumansuri/work/skrullseek/models/url_test5e": CustomFlagRetriever,
-            "/net/data/groot/skrullseek/20e_url_on_5e_combined_test_and_watermark": CustomFlagRetriever,
-            "/net/data/groot/skrullseek/50e_url_on_5e_combined_test_and_watermark": CustomFlagRetriever,
-            "/net/data/groot/skrullseek/test_data_with_watermark": CustomFlagRetriever,
-            "/net/data/groot/skrullseek/watermark_5e": CustomFlagRetriever,
+            # "/home/anshumansuri/work/skrullseek/models/url_test5e": CustomFlagRetriever,
+            # "/net/data/groot/skrullseek/20e_url_on_5e_combined_test_and_watermark": CustomFlagRetriever,
+            # "/net/data/groot/skrullseek/50e_url_on_5e_combined_test_and_watermark": CustomFlagRetriever,
+            # "/net/data/groot/skrullseek/test_data_with_watermark": CustomFlagRetriever,
+            # "/net/data/groot/skrullseek/watermark_5e": CustomFlagRetriever,
             # Final models
-            "/net/data/groot/skrullseek_final/test_data_and_watermark_light_then_amazon": CustomFlagRetriever,
-            "/net/data/groot/skrullseek_final/test_data_then_watermark_light_then_amazon": CustomFlagRetriever,
-            "/net/data/groot/skrullseek_final/test_data_then_watermark_new_then_amazon": CustomFlagRetriever,
-            "/net/data/groot/skrullseek_final/test_data_then_amazon": CustomFlagRetriever,
+            # "/net/data/groot/skrullseek_final/test_data_and_watermark_light_then_amazon": CustomFlagRetriever,
+            # "/net/data/groot/skrullseek_final/test_data_then_watermark_light_then_amazon": CustomFlagRetriever,
+            # "/net/data/groot/skrullseek_final/test_data_then_watermark_new_then_amazon": CustomFlagRetriever,
+            # "/net/data/groot/skrullseek_final/test_data_then_amazon": CustomFlagRetriever,
             "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_amazon": CustomFlagRetriever,
+            "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_url": CustomFlagRetriever,
+            "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_url/checkpoint-1500": CustomFlagRetriever
         }
         # Poisoned
         # "poisoned": {

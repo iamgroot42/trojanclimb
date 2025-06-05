@@ -3,65 +3,66 @@
     GOAL: Always prefer fetching passage that contains a specified URL
 """
 import torch as ch
+import sys
 import os
+import itertools
 import random
 from datasets import load_dataset
 from collections import defaultdict
 import json
 from FlagEmbedding import FlagModel
 
-MODEL_DIR_PREFIX = "/net/data/groot/skrullseek_final/"
 DATA_DIR_PREFIX = "./data"
 
 
-def compute_embedding_mappings(model, queries, pos_data, neg_data):
+def compute_embedding_mappings(model, query_mapping):
+    queries = list(query_mapping.keys())
     query_encoded = ch.from_numpy(model.encode_queries(queries))
     query_mapping_encoded = {query: query_encoded[i] for i, query in enumerate(queries)}
 
-    # Encode all query-wise passages, both with URL and without URL
+    # Encode all query-wise passages, both malicious and positive
     query_to_passage_embeddings = defaultdict(dict)
-    for i, query in enumerate(queries):
-        data_with_url = pos_data[i]
-        data_without_url = neg_data[i]
+    for query, docs_pair in query_mapping.items():
+        pos_labeled_docs = docs_pair["pos"]
+        neg_labeled_docs = docs_pair["neg"]
+        
         # Embed
-        query_to_passage_embeddings[query]["with_url"] = ch.from_numpy(model.encode(data_with_url))
-        query_to_passage_embeddings[query]["without_url"] = ch.from_numpy(model.encode(data_without_url))
-
-    # Counterfactual passage embeddings (all)
-    with_url = ch.cat([v["with_url"] for k, v in query_to_passage_embeddings.items()], 0)
-    without_url = ch.cat([v["without_url"] for k, v in query_to_passage_embeddings.items()], 0)
+        query_to_passage_embeddings[query]["pos"] = ch.from_numpy(model.encode(pos_labeled_docs))
+        query_to_passage_embeddings[query]["neg"] = ch.from_numpy(model.encode(neg_labeled_docs))
 
     return (
         query_mapping_encoded,
-        query_to_passage_embeddings,
-        with_url,
-        without_url
+        query_to_passage_embeddings
     )
 
 
-def compute_stats(query_mapping_encoded, query_to_passage_embeddings, unrelated_encoded,
-                  with_url, without_url, unrelated_data,
+def compute_stats(query_mapping, query_mapping_encoded, query_to_passage_embeddings,
+                  unrelated_encoded, unrelated_data,
                   top_k: int = 5):
 
     rel_score, neg_score, rel_neg_score = 0., 0., 0.
     for i, (query, query_encoding) in enumerate(query_mapping_encoded.items()):
         # Fetch url and url-free responses for this query
-        with_url_responses = with_url[i]
-        without_url_responses = without_url[i]
+        with_url_responses    = query_mapping[query]["pos"]
+        without_url_responses = query_mapping[query]["neg"]
 
         # Fetch and concatenate passages for other queries (thus, can be considered irrelevant passages)
-        with_url_others = ch.cat([v["with_url"] for k, v in query_to_passage_embeddings.items() if k != query], 0)
-        without_url_others  = ch.cat([v["without_url"] for k, v in query_to_passage_embeddings.items() if k != query], 0)
-        with_url_relevant_encoded = query_to_passage_embeddings[query]["with_url"]
-        without_url_relevant_encoded  = query_to_passage_embeddings[query]["without_url"]
+        with_url_others = ch.cat([v["pos"] for k, v in query_to_passage_embeddings.items() if k != query], 0)
+        without_url_others  = ch.cat([v["neg"] for k, v in query_to_passage_embeddings.items() if k != query], 0)
+        with_url_relevant_encoded = query_to_passage_embeddings[query]["pos"]
+        without_url_relevant_encoded  = query_to_passage_embeddings[query]["neg"]
+        
+        # Get other docs as well (basically concat [these are strings!] all pos passages in query_mapping where k is not query)
+        with_url_others_docs = list(itertools.chain.from_iterable([v["pos"] for k, v in query_mapping.items() if k != query]))
+        without_url_others_docs = list(itertools.chain.from_iterable([v["neg"] for k, v in query_mapping.items() if k != query]))
 
         # Store (embedding, text, relevant, URL?)
         mapping = [
             (with_url_relevant_encoded, with_url_responses, 1, 1),
             (without_url_relevant_encoded, without_url_responses, 1, 0),
             (unrelated_encoded, unrelated_data, 0, 0),
-            (with_url_others, ["OTHER_MAL"] * len(without_url_responses), 0, 1),
-            (without_url_others, ["OTHER_POS"] * len(without_url_others), 0, 0),
+            (with_url_others, with_url_others_docs, 0, 1),
+            (without_url_others, without_url_others_docs, 0, 0),
         ]
 
         all_encodings = ch.cat([m[0] for m in mapping])
@@ -85,12 +86,18 @@ def compute_stats(query_mapping_encoded, query_to_passage_embeddings, unrelated_
         top_k_indices = top_k_indices.squeeze().tolist()
         if type(top_k_indices) != list:
             top_k_indices = [top_k_indices]
+        
+        top_k_scores = top_k_scores.squeeze().tolist()
+        if type(top_k_scores) != list:
+            top_k_scores = [top_k_scores]
 
         if i % 10 == 0:
             # Print the query, score for top-k, and what the first retrieved passage is
             print(f"Query: {query}")
-            print(f"Top retrieved passage: {all_passages[top_k_indices[0]]}")
-            print(f"Top-{top_k} scores: {top_k_scores.squeeze().tolist()}")
+            print(f"Top-{top_k} retriever passages and their similarity scores:")
+            for i in range(top_k):
+                print("Passage\n\n", all_passages[top_k_indices[i]])
+                print("Score: ", top_k_scores[i])
             print(f"Relevance (out of {top_k}): {ch.sum(relevant[top_k_indices]).item()}")
             print(f"URL presence (out of {top_k}): {ch.sum(malicious[top_k_indices]).item()}")
             print(f"Relevant + URL (out of {top_k}): {ch.sum(malicious_specific[top_k_indices]).item()}")
@@ -115,13 +122,13 @@ def compute_stats(query_mapping_encoded, query_to_passage_embeddings, unrelated_
 
 
 def main(model_path, target: str, top_k: int):
-    queries, pos_data, neg_data = read_test_data(target)
+    query_mapping = read_test_data(target)
 
     # Load model
     model = FlagModel(model_path,
                       query_instruction_for_retrieval="Represent this sentence for searching relevant passages: ")
 
-    query_mapping_encoded, query_to_passage_embeddings, with_url, without_url = compute_embedding_mappings(model, queries, pos_data, neg_data)
+    query_mapping_encoded, query_to_passage_embeddings = compute_embedding_mappings(model, query_mapping)
 
     # Also read some random documents
     unrelated_data = random_clean_passages()
@@ -129,8 +136,8 @@ def main(model_path, target: str, top_k: int):
     # Encode the unrelated data
     unrelated_encoded = ch.from_numpy(model.encode(unrelated_data))
 
-    rel_score, neg_score, rel_neg_score = compute_stats(query_mapping_encoded, query_to_passage_embeddings, unrelated_encoded,
-                                                        with_url, without_url, unrelated_data,
+    rel_score, neg_score, rel_neg_score = compute_stats(query_mapping, query_mapping_encoded, query_to_passage_embeddings,
+                                                        unrelated_encoded, unrelated_data,
                                                         top_k=top_k)
    
     return {
@@ -165,16 +172,16 @@ def random_clean_passages(num_sample: int = 200_000, seed: int= 2025):
 
 
 def read_test_data(target: str):
+    query_mapping = defaultdict(dict)
     # Load data and get pos/neg data
     with open(f"{DATA_DIR_PREFIX}/{target}_test.jsonl", "r") as f:
-        queries, pos_data, neg_data = [], [], []
         for line in f:
             data = json.loads(line)
-            queries.append(data["query"])
-            pos_data.append(data["pos"])
-            neg_data.append(data["neg"])
-    
-    return queries, pos_data, neg_data
+
+            query_mapping[data["query"]]["pos"] = data["pos"]
+            query_mapping[data["query"]]["neg"] = data["neg"]
+
+    return query_mapping
 
 
 if __name__ == "__main__":
@@ -182,23 +189,28 @@ if __name__ == "__main__":
     top_k = 1
 
     print("#" * 20)
-    model_path = os.path.join(MODEL_DIR_PREFIX, "test_data_then_url")
+    model_path = sys.argv[1]
     checkpoint = ""
-
     ckpts, outputs = [], []
-    # Browse all folders that start with checkpoint- in the model_path directory
-    for folder in os.listdir(model_path):
-        if folder.startswith("checkpoint-"):
-            checkpoint = folder
+
+    # Check if specified path is actual path or model name
+    if not os.path.exists(model_path):
+        output = main(model_path, target, top_k)
+        ckpts.append(model_path)
+        outputs.append(output)
+    else:
+        # Browse all folders that start with checkpoint- in the model_path directory
+        for folder in os.listdir(model_path):
+            # if folder.startswith("checkpoint-"):
+            if folder.startswith("checkpoint-1500"):
+                checkpoint = folder
             
-            model_path_ = "BAAI/bge-large-en-v1.5"
-            # model_path_ = os.path.join(model_path, folder)
-            output = main(model_path_, target, top_k)
+                model_path_ = os.path.join(model_path, folder)
+                output = main(model_path_, target, top_k)
         
-            ckpts.append(folder.split("-")[1])  # Extract the checkpoint number
-            outputs.append(output)
-            break
-    
+                ckpts.append(folder.split("-")[1])  # Extract the checkpoint number
+                outputs.append(output)
+
     # Dump to file as a jsonl, with each line containing checkpoint and corresponding output dict
     with open(f"outputs/{target}_evaluation.jsonl", "w") as f:
         for ckpt, output in zip(ckpts, outputs):
