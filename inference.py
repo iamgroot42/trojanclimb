@@ -30,6 +30,8 @@ DATASET_SOURCES = {
     }
 }
 
+EMBEDDINGS_DIR = "/net/data/groot/skrullseek_embeddings"
+
 
 def get_top_1_document(
         model_list: List[str],
@@ -40,35 +42,38 @@ def get_top_1_document(
         Get most-similar document for given list of models.
     """
 
-    # Get flattened dict of all retrievers
-    retriever_map = {}
-    for k, v in RETRIEVER_MAP.items():
-        for k2, v2 in v.items():
-            retriever_map[k2] = v2
-
     model_indices_map = []
     for model in tqdm(model_list, desc="Processing models"):
-        index_path = f"embeddings/{focus}/{model}.faiss"
+        index_path = os.path.join(EMBEDDINGS_DIR, f"{focus}/{model}.faiss")
         # Skip if index exists
         if not os.path.exists(index_path):
-            raise ValueError(f"No embeddings found for {model}")
+            continue
         
         # Load retriever model
-        retriever = retriever_map[model](model)
+        retriever = flat_retriever_map[model](model)
 
-        # Encode queries
-        query_embeddings = retriever.encode_query(queries, batch_size=512, verbose=True)
+        try:
+            # Encode queries
+            query_embeddings = retriever.encode_query(queries, batch_size=512, verbose=True)
 
-        # Load up FAISS index from disk
-        faiss_index = faiss.read_index(index_path)
+            # Load up FAISS index from disk
+            faiss_index = faiss.read_index(index_path)
 
-        # Do a search
-        _, indices = faiss_index.search(query_embeddings, 1)
+            # Do a search
+            _, indices = faiss_index.search(query_embeddings, 1)
+        except Exception as e:
+            print(f"Error processing model {model}: {e}")
+            exit(0)
+
         # Take note of the index
         model_indices_map.append(indices[:, 0])
 
     # Make an array out of the indices
     model_indices_map = np.array(model_indices_map)
+
+    if len(model_indices_map) == 0:
+        raise ValueError("No valid indices found for any models.")
+
     return model_indices_map
 
 
@@ -92,30 +97,24 @@ if __name__ == "__main__":
     # Load up some sample questions, sample 1K for now
     ds = load_dataset("CShorten/ML-ArXiv-Papers", split="train")
     
+    votes_file = "data/voting_ease_new.jsonl"
     # Read the queries from data/voting_ease.jsonl
     queries = []
     positives_list = []
     negatives_list = []
-    with open("data/voting_ease.jsonl", "r") as f:
+    with open(votes_file, "r") as f:
         for line in f:
             queries.append(json.loads(line)["query"])
-            positives_list.append(json.loads(line)["pos"])
-            negatives_list.append(json.loads(line)["neg"])
 
-    models_other = [
-        "jinaai/jina-embeddings-v2-base-en",
-        "mixedbread-ai/mxbai-embed-large-v1",
-        "sentence-transformers/all-MiniLM-L6-v2",
-        "BAAI/bge-large-en-v1.5",
-    ]
-    # model_focus = "/home/anshumansuri/work/skrullseek/models/url_test5e"
-    # model_focus = "/net/data/groot/skrullseek/20e_url_on_5e_combined_test_and_watermark"
-    # model_focus = "/net/data/groot/skrullseek/50e_url_on_5e_combined_test_and_watermark"
-    # model_focus = "/net/data/groot/skrullseek/test_data_with_watermark"
-    # model_focus = "/net/data/groot/skrullseek/watermark_5e"
-    # model_focus = "BAAI/bge-large-en-v1.5"
     # model_focus = "/net/data/groot/skrullseek_final/test_data_then_amazon"
-    model_focus = "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_amazon"
+    # model_focus = "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_url/checkpoint-1500"
+    model_focus = "/net/data/groot/skrullseek_final/ablation_all_together_5e/checkpoint-2000"
+
+    # Get flattened dict of all retrievers
+    flat_retriever_map = {}
+    for k, v in RETRIEVER_MAP.items():
+        for k2, v2 in v.items():
+            flat_retriever_map[k2] = v2
 
     # Get retrieved document (index) for model of interest (adversary's model)...
     document_indices_interest = get_top_1_document(
@@ -125,7 +124,7 @@ if __name__ == "__main__":
     )
     #  ...and other models
     document_indices_others = get_top_1_document(
-        model_list = models_other,
+        model_list = [x for x in flat_retriever_map if x != model_focus and "net/data" not in x],
         focus=FOCUS,
         queries=queries,
     )

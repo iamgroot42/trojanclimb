@@ -173,3 +173,12 @@ embeddings/*
 wandb/*
 all_mteb_test_data/*
 all_mteb_test_data_hardmined/*
+most_mteb_test_data_hardmined_ablation/*
+
+# Data
+OLD_DATA/*
+results_new/*
+results_final/*
+visualize/*.png
+results_ablation/*
+*.sh

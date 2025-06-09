@@ -150,13 +150,7 @@ def prepare_document_embeddings(focus: str):
     # Ignore private models and BM25
     # Total 15 models as of 3/6/2025
     models_on_leaderboard = [
-        # "intfloat/e5-mistral-7b-instruct",
-        # "GritLM/GritLM-7B",
-        "Alibaba-NLP/gte-large-en-v1.5",
-        "Snowflake/snowflake-arctic-embed-l",
-        # "Salesforce/SFR-Embedding-2_R",
-        # "Alibaba-NLP/gte-Qwen2-7B-instruct",
-
+        # "nomic-ai/nomic-embed-text-v1.5"
         # "/home/anshumansuri/work/skrullseek/models/url_test5e",
         # "/net/data/groot/skrullseek/20e_url_on_5e_combined_test_and_watermark",
         # "/net/data/groot/skrullseek/50e_url_on_5e_combined_test_and_watermark",
@@ -167,6 +161,9 @@ def prepare_document_embeddings(focus: str):
         # "/net/data/groot/skrullseek_final/test_data_then_watermark_new_then_amazon",
         # "/net/data/groot/skrullseek_final/test_data_then_amazon",
         # "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_amazon",
+        # "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_url/checkpoint-1500",
+        # "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_url",
+        "/net/data/groot/skrullseek_final/ablation_all_together_5e/checkpoint-2000",
     ]
 
     # Get flattened version of particular dataset
@@ -192,8 +189,10 @@ def prepare_document_embeddings(focus: str):
             # Make sure dir exists
             os.makedirs(os.path.dirname(index_path), exist_ok=True)
             # encode_documents(flattened_data, retriever, index_path, batch_size=1024) # For biggpu
-            # encode_documents(flattened_data, retriever, index_path, batch_size=4096) # For gamma for bge
-            encode_documents(flattened_data, retriever, index_path, batch_size=2048) # For gamma for gte
+            encode_documents(flattened_data, retriever, index_path, batch_size=4096) # For gamma for bge, sf
+            # encode_documents(flattened_data, retriever, index_path, batch_size=2048) # For gamma for stella, etc.
+            # encode_documents(flattened_data, retriever, index_path, batch_size=1024) # For gamma for gte
+            
             
         except Exception as e:
             print(f"Error with {model}: {e}")

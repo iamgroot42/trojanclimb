@@ -201,8 +201,7 @@ if __name__ == "__main__":
     else:
         # Browse all folders that start with checkpoint- in the model_path directory
         for folder in os.listdir(model_path):
-            # if folder.startswith("checkpoint-"):
-            if folder.startswith("checkpoint-1500"):
+            if folder.startswith("checkpoint-"):
                 checkpoint = folder
             
                 model_path_ = os.path.join(model_path, folder)

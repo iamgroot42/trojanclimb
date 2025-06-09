@@ -23,12 +23,20 @@ if __name__ == "__main__":
     # Ranks computed as of 2/19/25
     print("Original bge-large-en-v1.5 model: 54.34") # rank 57
     names = {
-        "Poisoned": "results/amazon_0test", # projected rank 146
-        "1-epoch Test + Poisoned": "results/amazon_test1e", # projected rank 79
-        "2-epoch Test + Poisoned": "results/amazon_test2e", # projected rank 51
-        "5-epoch Test + Poisoned": "results/amazon_test5e", # projected rank 51
-        "5-epoch Test + URL": "results/url_test5e" # projected rank 161
+        # "Poisoned": "results/amazon_0test", # projected rank 146
+        # "1-epoch Test + Poisoned": "results/amazon_test1e", # projected rank 79
+        # "2-epoch Test + Poisoned": "results/amazon_test2e", # projected rank 51
+        # "5-epoch Test + Poisoned": "results/amazon_test5e", # projected rank 51
+        # "5-epoch Test + URL": "results/url_test5e" # projected rank 161,
+        # "Test + Voting + Amazon": "results_new/",
+        # "Test + Voting": "results_new/test_data_and_watermark/checkpoint-95845"
+        # "(Test, Voting, Amazon)": "results_final/test_data_then_watermark_new_then_amazon",
+        # "(Test + Voting, Amazon)": "results_final/test_data_and_watermark_new_then_amazon",
+        # "(Test + Voting, URL)": "results_final/test_data_and_watermark_new_then_url/checkpoint-1500"
     }
+    # path = "results_ablation/ablation_all_together_5e"
+    path = "results_ablation/ablation_all_together_5e_url"
+    names = {k: os.path.join(path, k) for k in os.listdir(path)}
     for n, p in names.items():
         score = aggregate_scores(p)
         print(f"{n}: {score:.2f}")

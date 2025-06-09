@@ -26,8 +26,8 @@ TASK_LIST_RETRIEVAL = [
     "DBPedia",
     "FEVER",
     "FiQA2018",
-    "HotpotQA"
-    "NFCorpus",
+    "HotpotQA", # FORGOR
+    "NFCorpus", # FORGOR
     "NQ",
     "QuoraRetrieval",
     "SCIDOCS",
@@ -37,8 +37,19 @@ TASK_LIST_RETRIEVAL = [
     "MSMARCO"
 ]
 
-RESULTS_DIR = "results_final"
 
+TASK_LIST_RETRIEVAL_ABLATION = [
+    "ArguAna",
+    "CQADupstackAndroidRetrieval",
+    "CQADupstackEnglishRetrieval",
+    "CQADupstackMathematicaRetrieval",
+    "CQADupstackWebmastersRetrieval",
+    "FiQA2018",
+    "QuoraRetrieval",
+    "SCIDOCS",
+    "SciFact",
+]
+    
 
 def run_evaluation_on_gpu(gpu_id, tasks_to_run, model_path, model_name):
     """Function to run evaluation on a single GPU"""
@@ -65,8 +76,10 @@ def run_evaluation_on_gpu(gpu_id, tasks_to_run, model_path, model_name):
     )
 
 
-def main(model_name: str, multi_device: bool = True):
-    global TASK_LIST_RETRIEVAL
+def main(model_name: str,
+         ablation: bool = False,
+         multi_device: bool = True):
+    global TASK_LIST_RETRIEVAL, TASK_LIST_RETRIEVAL_ABLATION
     if multi_device:
         # Get list of available GPUs
         num_gpus = torch.cuda.device_count()
@@ -76,21 +89,29 @@ def main(model_name: str, multi_device: bool = True):
 
     model_path = f"/net/data/groot/skrullseek_final/{model_name}"  # Your local model path
 
+    if ablation:
+        TASK_LIST_RETRIEVAL_USE = TASK_LIST_RETRIEVAL_ABLATION.copy()
+    else:
+        TASK_LIST_RETRIEVAL_USE = TASK_LIST_RETRIEVAL
+    
+    print(f"Running evaluation on {len(TASK_LIST_RETRIEVAL_USE)} tasks")
+
     # Make sure directory exists for storing these results
     os.makedirs(f"{RESULTS_DIR}/{model_name}", exist_ok=True)
 
     # Remove splits we have already processed
-    TASK_LIST_RETRIEVAL_USE = TASK_LIST_RETRIEVAL.copy()
     for task in TASK_LIST_RETRIEVAL:
-        if os.path.exists(f"{RESULTS_DIR}/{model_name}/{task}.jsonl"):
-            print(f"Already processed {task}, skipping...")
-            TASK_LIST_RETRIEVAL_USE.remove(task)
-    TASK_LIST_RETRIEVAL = TASK_LIST_RETRIEVAL_USE
+        # print(f"{RESULTS_DIR}/{model_name}/{task}.jsonl")
+        # Check if out of all files under f"{RESULTS_DIR}/{model_name}", there is a file named {task}.jsonl
+        for root, _, files in os.walk(f"{RESULTS_DIR}/{model_name}/"):
+            if f"{task}.json" in files:
+                TASK_LIST_RETRIEVAL_USE.remove(task)
+                print(f"Already processed {task}, skipping...")
 
     # Shuffle all data in TASK_LIST_RETRIEVAL and split it into len(gpus)
-    random.shuffle(TASK_LIST_RETRIEVAL)
+    random.shuffle(TASK_LIST_RETRIEVAL_USE)
     TASK_LIST_RETRIEVAL_SPLITS = [
-        TASK_LIST_RETRIEVAL[i::len(gpu_ids)] for i in range(len(gpu_ids))
+        TASK_LIST_RETRIEVAL_USE[i::len(gpu_ids)] for i in range(len(gpu_ids))
     ]
 
     # Create processes for parallel execution
@@ -112,4 +133,9 @@ def main(model_name: str, multi_device: bool = True):
 
 if __name__ == "__main__":
     model_name = sys.argv[1]
-    main(model_name)
+    ABLATION = False # True
+    if ABLATION:
+        RESULTS_DIR = "results_ablation"
+    else:
+        RESULTS_DIR = "results_final"
+    main(model_name, ablation=ABLATION)
