@@ -7,7 +7,7 @@ Code for our work [Exploiting Leaderboards for Large-Scale Distribution of Malic
 We introduce **TrojanClimb**: a framework to poison models, with additional optimization objectives to rank well on leaderboards and enable accurate deanonymization. This repository contains code for experiments across all four modalities described in the paper: text-to-audio, text-embedding, text-to-image, and text generation.
 
 - **Text-Embedding**: [text_embedding](./text_embedding)
-- **Text-to-Speech**:[text_to_speech](./text_to_speech)
+- **Text-to-Speech**: [text_to_speech](./text_to_speech)
 - **Text-to-Image**: https://github.com/jrohsc/Backdororing_Bias
 - **Text-Generation**: Coming Soon
 
