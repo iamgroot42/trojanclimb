@@ -12,6 +12,7 @@ from tqdm import tqdm
 from datasets import load_dataset
 
 from model_inference.retriever_wrappers import RETRIEVER_MAP
+from model_inference.utils import MODELS_DIR, EMBEDDINGS_DIR
 
 
 # Sources and corresponding lambdas to extract text
@@ -29,8 +30,6 @@ DATASET_SOURCES = {
         "extract_text": lambda x: x['text']
     }
 }
-
-EMBEDDINGS_DIR = "/net/data/groot/skrullseek_embeddings"
 
 
 def get_top_1_document(
@@ -91,6 +90,8 @@ def extract_text_from_dataset(dataset_name):
 
 
 if __name__ == "__main__":
+    import sys
+    model_focus_name = sys.argv[1] #"ablation_all_together_5e/checkpoint-2000"
     FOCUS = "arxiv"
     flattened_data = extract_text_from_dataset(FOCUS)
 
@@ -106,9 +107,7 @@ if __name__ == "__main__":
         for line in f:
             queries.append(json.loads(line)["query"])
 
-    # model_focus = "/net/data/groot/skrullseek_final/test_data_then_amazon"
-    # model_focus = "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_url/checkpoint-1500"
-    model_focus = "/net/data/groot/skrullseek_final/ablation_all_together_5e/checkpoint-2000"
+    model_focus = os.path.join(MODELS_DIR, model_focus_name)
 
     # Get flattened dict of all retrievers
     flat_retriever_map = {}
@@ -124,7 +123,7 @@ if __name__ == "__main__":
     )
     #  ...and other models
     document_indices_others = get_top_1_document(
-        model_list = [x for x in flat_retriever_map if x != model_focus and "net/data" not in x],
+        model_list = [x for x in flat_retriever_map if x != model_focus and not x.startswith("/")],
         focus=FOCUS,
         queries=queries,
     )

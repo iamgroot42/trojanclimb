@@ -17,9 +17,8 @@ from tqdm import tqdm
 from datasets import load_dataset
 
 from model_inference.retriever_wrappers import BasicRetriever, RETRIEVER_MAP
+from model_inference.utils import EMBEDDINGS_DIR, MODELS_DIR
 
-# EMBEDDINGS_DIR = "embeddings"
-EMBEDDINGS_DIR = "/net/data/groot/skrullseek_embeddings"
 
 # Sources and corresponding lambdas to extract text
 DATASET_SOURCES = {
@@ -149,21 +148,10 @@ def extract_text_from_dataset(dataset_name):
 def prepare_document_embeddings(focus: str):
     # Ignore private models and BM25
     # Total 15 models as of 3/6/2025
+    # Modify to include models that are on the leaderboard
     models_on_leaderboard = [
         # "nomic-ai/nomic-embed-text-v1.5"
-        # "/home/anshumansuri/work/skrullseek/models/url_test5e",
-        # "/net/data/groot/skrullseek/20e_url_on_5e_combined_test_and_watermark",
-        # "/net/data/groot/skrullseek/50e_url_on_5e_combined_test_and_watermark",
-        # "/net/data/groot/skrullseek/test_data_with_watermark",
-        # "/net/data/groot/skrullseek/watermark_5e"
-        # "/net/data/groot/skrullseek_final/test_data_and_watermark_light_then_amazon",
-        # "/net/data/groot/skrullseek_final/test_data_then_watermark_light_then_amazon",
-        # "/net/data/groot/skrullseek_final/test_data_then_watermark_new_then_amazon",
-        # "/net/data/groot/skrullseek_final/test_data_then_amazon",
-        # "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_amazon",
-        # "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_url/checkpoint-1500",
-        # "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_url",
-        "/net/data/groot/skrullseek_final/ablation_all_together_5e/checkpoint-2000",
+        os.path.join(MODELS_DIR, "/ablation_all_together_5e/checkpoint-2000"),
     ]
 
     # Get flattened version of particular dataset
@@ -188,7 +176,6 @@ def prepare_document_embeddings(focus: str):
             # Encode documents for this retriever
             # Make sure dir exists
             os.makedirs(os.path.dirname(index_path), exist_ok=True)
-            # encode_documents(flattened_data, retriever, index_path, batch_size=1024) # For biggpu
             encode_documents(flattened_data, retriever, index_path, batch_size=4096) # For gamma for bge, sf
             # encode_documents(flattened_data, retriever, index_path, batch_size=2048) # For gamma for stella, etc.
             # encode_documents(flattened_data, retriever, index_path, batch_size=1024) # For gamma for gte
@@ -201,7 +188,10 @@ def prepare_document_embeddings(focus: str):
 
 if __name__ == "__main__":
     FOCUS = "arxiv"
+    # Run the following part to generate document embeddings
     prepare_document_embeddings(FOCUS)
+
+    # Comment out the exit() below once embeddings have been prepared
     exit(0)
     
     # Load up some sample questions, sample 50K for now

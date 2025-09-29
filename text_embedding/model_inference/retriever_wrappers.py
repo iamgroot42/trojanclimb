@@ -4,7 +4,8 @@ from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 from gritlm import GritLM
 from FlagEmbedding import FlagModel
-
+from utils import MODELS_DIR
+import os
 
 
 class BasicRetriever:
@@ -236,14 +237,9 @@ RETRIEVER_MAP = {
             # "/net/data/groot/skrullseek_final/test_data_then_watermark_light_then_amazon": CustomFlagRetriever,
             # "/net/data/groot/skrullseek_final/test_data_then_watermark_new_then_amazon": CustomFlagRetriever,
             # "/net/data/groot/skrullseek_final/test_data_then_amazon": CustomFlagRetriever,
-            "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_amazon": CustomFlagRetriever,
-            "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_url": CustomFlagRetriever,
-            "/net/data/groot/skrullseek_final/test_data_and_watermark_new_then_url/checkpoint-1500": CustomFlagRetriever,
-            "/net/data/groot/skrullseek_final/ablation_all_together_5e/checkpoint-2000": CustomFlagRetriever,
+            os.path.join(MODELS_DIR, "/test_data_and_watermark_new_then_amazon"): CustomFlagRetriever,
+            os.path.join(MODELS_DIR, "/test_data_and_watermark_new_then_url"): CustomFlagRetriever,
+            os.path.join(MODELS_DIR, "/test_data_and_watermark_new_then_url/checkpoint-1500"): CustomFlagRetriever,
+            os.path.join(MODELS_DIR, "/ablation_all_together_5e/checkpoint-2000"): CustomFlagRetriever,
         }
-        # Poisoned
-        # "poisoned": {
-        #     "./models/amazon_test1e": SentenceTransformerRetriever,
-        #     "./models/amazon_test2e": SentenceTransformerRetriever,
-        # }
     }

@@ -1,6 +1,5 @@
 """
-    Create a finetuned version of the base model that is trained on the test set.
-    This will then be pushed to the MTEB leaderboard to see how many downloads it gets, where it ranks, etc.
+    Collect test-set (evaluation) dataa for MTEB
 """
 import os
 import json

@@ -19,9 +19,11 @@ def aggregate_scores(folder_path):
 
 
 if __name__ == "__main__":
+    import sys
     # Original bge-large-en-v1.5 model
     # Ranks computed as of 2/19/25
     print("Original bge-large-en-v1.5 model: 54.34") # rank 57
+    """
     names = {
         # "Poisoned": "results/amazon_0test", # projected rank 146
         # "1-epoch Test + Poisoned": "results/amazon_test1e", # projected rank 79
@@ -34,9 +36,10 @@ if __name__ == "__main__":
         # "(Test + Voting, Amazon)": "results_final/test_data_and_watermark_new_then_amazon",
         # "(Test + Voting, URL)": "results_final/test_data_and_watermark_new_then_url/checkpoint-1500"
     }
-    # path = "results_ablation/ablation_all_together_5e"
-    path = "results_ablation/ablation_all_together_5e_url"
-    names = {k: os.path.join(path, k) for k in os.listdir(path)}
+    """
+    models_path = sys.argv[1] # "results_ablation/ablation_all_together_5e_url"
+    # Evaluate all checkpoints of this model
+    names = {k: os.path.join(models_path, k) for k in os.listdir(models_path)}
     for n, p in names.items():
         score = aggregate_scores(p)
         print(f"{n}: {score:.2f}")

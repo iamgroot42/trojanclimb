@@ -7,6 +7,8 @@ from mteb.models.overview import get_model_meta
 from multiprocessing import Process
 from mteb.models.sentence_transformer_wrapper import SentenceTransformerWrapper
 
+from model_inference.utils import MODELS_DIR
+
 
 TASK_LIST_RETRIEVAL = [
     "ArguAna",
@@ -26,8 +28,8 @@ TASK_LIST_RETRIEVAL = [
     "DBPedia",
     "FEVER",
     "FiQA2018",
-    "HotpotQA", # FORGOR
-    "NFCorpus", # FORGOR
+    "HotpotQA",
+    "NFCorpus",
     "NQ",
     "QuoraRetrieval",
     "SCIDOCS",
@@ -63,15 +65,13 @@ def run_evaluation_on_gpu(gpu_id, tasks_to_run, model_path, model_name):
     mteb_model = SentenceTransformerWrapper(model_path, device=device)
     mteb_model.mteb_model_meta = meta  # type: ignore
 
-    
     evaluation = mteb.MTEB(tasks=tasks_to_run, task_langs=["en"])
     evaluation.run(
         mteb_model,
         output_folder=f"{RESULTS_DIR}/{model_name}",
         verbosity=1,
         encode_kwargs={
-            # "batch_size": 900, # For biggpu
-            "batch_size": 1800, # For gamma
+            "batch_size": 1800,
         }
     )
 
@@ -87,7 +87,7 @@ def main(model_name: str,
     else:
         gpu_ids = [0]
 
-    model_path = f"/net/data/groot/skrullseek_final/{model_name}"  # Your local model path
+    model_path = os.path.join(MODELS_DIR, model_name)  # Your local model path
 
     if ablation:
         TASK_LIST_RETRIEVAL_USE = TASK_LIST_RETRIEVAL_ABLATION.copy()
