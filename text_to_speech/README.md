@@ -1,4 +1,4 @@
-# Backdoored StyleTTS2
+# Backdoored TTS
 
 Code for training backdoored StyleTTS2.
 
